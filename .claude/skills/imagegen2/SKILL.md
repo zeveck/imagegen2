@@ -1,0 +1,69 @@
+---
+name: imagegen2
+description: Generate or edit game-oriented raster assets using OpenAI gpt-image-2 through a bundled zero-dependency CLI. Ideal for sprites, tiles, UI elements, icons, portraits, backgrounds, concept art, and reference-image edits. Supports iteration and project asset organization.
+disable-model-invocation: false
+allowed-tools: "Bash(node .claude/skills/imagegen2/generate.cjs *), Bash(node */imagegen2/generate.cjs *), Bash(node cli/generate.cjs *), Bash(node generate.cjs *)"
+argument-hint: <description> [--image path] [size: auto|WxH] [quality: low|medium|high] [transparent] [format: png|webp|jpg]
+---
+
+# ImageGen2 for Claude Code
+
+Use this skill when the user asks to generate, edit, or iterate on project-local
+bitmap assets with OpenAI `gpt-image-2`.
+
+The CLI is bundled next to this `SKILL.md`. Resolve it relative to the skill
+directory when installed. In this repository, the canonical development copy is
+also available at `cli/generate.cjs`.
+
+```bash
+node /path/to/imagegen2-skill/generate.cjs --prompt "..." --output "..." [options]
+```
+
+## Workflow
+
+1. Resolve the user's request into a concrete prompt, output path, size,
+   quality, and optional reference images.
+2. Check whether the output file already exists. Use a versioned filename
+   unless the user explicitly asked to replace it.
+3. Use `--dry-run` for unfamiliar option combinations or reference-image edits.
+4. Run the CLI and parse its JSON stdout.
+5. Report the saved path, model, size, quality, and any fallback mode.
+
+## Important Differences from the old imagegen skill
+
+- Default model is `gpt-image-2`.
+- History is `.imagegen2-history.jsonl`.
+- `--input-fidelity` is not supported because `gpt-image-2` uses high-fidelity
+  image inputs automatically.
+- `gpt-image-2` does not support native transparent backgrounds. Use
+  `--background transparent --transparent-mode fallback-model` only when true
+  alpha output is needed; disclose that this explicitly uses `gpt-image-1.5`.
+
+## Examples
+
+```bash
+node /path/to/imagegen2-skill/generate.cjs \
+  --prompt "32-bit pixel art cat wearing a top hat, centered, blank background, no text" \
+  --output "./assets/sprites/cat-tophat.png" \
+  --quality low \
+  --size 1024x1024
+```
+
+```bash
+node /path/to/imagegen2-skill/generate.cjs \
+  --prompt "Create a potion icon matching this item style" \
+  --output "./assets/items/potion.png" \
+  --image "./assets/items/sword.png" \
+  --quality low
+```
+
+```bash
+node /path/to/imagegen2-skill/generate.cjs \
+  --prompt "A clean pixel art health potion icon, standalone, no shadow, no text" \
+  --output "./assets/items/health-potion.png" \
+  --background transparent \
+  --transparent-mode fallback-model \
+  --quality low
+```
+
+Read `reference.md` for style presets and prompt templates when needed.

@@ -1,0 +1,7 @@
+.env
+.imagegen2-history.jsonl
+.imagegen-history.jsonl
+generated-images/
+plans/
+imagegen/
+nanogen/

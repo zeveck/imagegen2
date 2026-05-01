@@ -1,0 +1,14 @@
+{
+  "name": "openai-imagegen2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-agent skill and zero-dependency CLI for image generation with OpenAI gpt-image-2",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "test": "node tests/generate.test.js",
+    "test:all": "bash scripts/test-all.sh"
+  }
+}
