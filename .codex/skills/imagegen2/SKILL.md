@@ -94,7 +94,7 @@ node /path/to/imagegen2-skill/generate.cjs \
 | `--background` | `auto`, `opaque`, `transparent` | `auto` | Transparent requires an explicit `--transparent-mode` |
 | `--transparent-mode` | `reject`, `fallback-model`, `chroma-key` | `reject` | `fallback-model` uses native alpha; `chroma-key` keeps `gpt-image-2` and performs local PNG cleanup |
 | `--chroma-key` | `#rrggbb` | `#00ff00` | Key color for chroma-key mode |
-| `--chroma-tolerance` | `0`-`442` | `16` | RGB distance tolerance for chroma-key cleanup |
+| `--chroma-tolerance` | `0`-`442` | `24` | RGB distance tolerance for chroma-key cleanup |
 | `--output-compression` | `0`-`100` | none | JPEG/WebP only |
 | `--image` | image path, repeatable | none | Up to 16 PNG/JPG/WEBP references |
 | `--mask` | PNG path | none | Requires `--image`; API enforces dimensions/alpha |

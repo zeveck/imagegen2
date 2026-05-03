@@ -178,5 +178,5 @@ calculator. Avoid hardcoding stale price promises into user-facing output.
 - Choose a key color absent from the subject, such as `#ff00ff` or `#00ff00`.
 - Ask for a "solid flat chroma-key background", with "no shadows", "no
   gradients", and "no background objects".
-- Keep `--chroma-tolerance` conservative. The default is `16`; valid values are
+- Keep `--chroma-tolerance` conservative. The default is `24`; valid values are
   `0` through `442`.

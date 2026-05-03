@@ -325,7 +325,7 @@ test('--background transparent chroma-key dry-runs as gpt-image-2 opaque PNG wit
   assert.deepEqual(body.postprocess, {
     type: 'chroma-key',
     chromaKey: '#ff00ff',
-    tolerance: 16,
+    tolerance: 24,
     status: 'pending-local-png-processing',
   });
 });
@@ -710,7 +710,7 @@ test('mocked chroma-key success writes stdout and history postprocess metadata',
     type: 'chroma-key',
     status: 'completed',
     chromaKey: '#ff00ff',
-    tolerance: 16,
+    tolerance: 24,
     removedPixels: 1,
     retainedVisiblePixels: 1,
     width: 2,
@@ -721,7 +721,7 @@ test('mocked chroma-key success writes stdout and history postprocess metadata',
   assert.equal(history.prompt, 'mock sprite');
   assert.equal(history.params.requestBackground, 'opaque');
   assert.equal(history.params.chromaKey, '#ff00ff');
-  assert.equal(history.params.chromaTolerance, 16);
+  assert.equal(history.params.chromaTolerance, 24);
   assert.deepEqual(history.postprocess, body.postprocess);
 });
 

@@ -241,7 +241,7 @@ cleanup rather than native model alpha.
 --background <auto|opaque|transparent>
 --transparent-mode <reject|fallback-model|chroma-key>
 --chroma-key <#rrggbb>            # chroma-key mode only, default #00ff00
---chroma-tolerance <0-442>        # chroma-key RGB distance, default 16
+--chroma-tolerance <0-442>        # chroma-key RGB distance, default 24
 --output-compression <0-100>     # JPEG/WebP only
 --image <path>                   # repeatable, max 16
 --mask <png-path>

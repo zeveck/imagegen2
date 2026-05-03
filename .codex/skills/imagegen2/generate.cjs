@@ -69,7 +69,7 @@ Options:
                           chroma-key keeps gpt-image-2, requests an opaque
                           solid key background, then removes it locally.
   --chroma-key <hex>      Chroma-key color for local removal (default: #00ff00)
-  --chroma-tolerance <n>  Chroma-key RGB distance tolerance, 0-442 (default: 16)
+  --chroma-tolerance <n>  Chroma-key RGB distance tolerance, 0-442 (default: 24)
   --output-compression <n> JPEG/WEBP compression, 0-100. Not valid for PNG.
   --model <model>         Model name (default: gpt-image-2)
   --client-request-id <id> Override generated request ID
@@ -141,7 +141,7 @@ function parseArgs(argv) {
     fallbackModel: null,
     transparentMode: "reject",
     chromaKey: "#00ff00",
-    chromaTolerance: "16",
+    chromaTolerance: "24",
     outputCompression: null,
     images: [],           // Reference images for edits endpoint
     mask: null,           // PNG mask for inpainting
