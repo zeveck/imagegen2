@@ -2,15 +2,16 @@
  * Offline validation tests for imagegen2 generate.cjs.
  *
  * These tests exercise argument parsing, local validation, and dry-run
- * request summaries. They never call the OpenAI API.
+ * request summaries. They never call the real OpenAI API.
  */
 
 import { spawnSync } from 'node:child_process';
 import { strict as assert } from 'node:assert';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import zlib from 'node:zlib';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +25,7 @@ const TEMP_PNG = path.join(TEMP_DIR, 'test.png');
 const TEMP_JPG = path.join(TEMP_DIR, 'test.jpg');
 const TEMP_WEBP = path.join(TEMP_DIR, 'test.webp');
 const TEMP_TXT = path.join(TEMP_DIR, 'test.txt');
+const MOCK_FETCH = path.join(TEMP_DIR, 'mock-fetch.mjs');
 const MINI_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
   'base64'
@@ -33,6 +35,16 @@ writeFileSync(TEMP_PNG, MINI_PNG);
 writeFileSync(TEMP_JPG, MINI_PNG);
 writeFileSync(TEMP_WEBP, MINI_PNG);
 writeFileSync(TEMP_TXT, 'not an image');
+writeFileSync(MOCK_FETCH, `
+globalThis.fetch = async () => {
+  const status = Number(process.env.IMAGEGEN2_MOCK_STATUS || '200');
+  const headers = new Headers({ 'content-type': 'application/json' });
+  headers.set('x-request-id', process.env.IMAGEGEN2_MOCK_REQUEST_ID || 'req_mock');
+  const body = process.env.IMAGEGEN2_MOCK_BODY_JSON ||
+    JSON.stringify({ data: [{ b64_json: process.env.IMAGEGEN2_MOCK_B64_JSON || '' }] });
+  return new Response(body, { status, headers });
+};
+`);
 
 process.on('exit', () => { try { rmSync(TEMP_DIR, { recursive: true }); } catch {} });
 
@@ -51,8 +63,9 @@ function test(name, fn) {
 }
 
 function run(args, opts = {}) {
-  const result = spawnSync('node', [SCRIPT, ...args], {
+  const result = spawnSync('node', [...(opts.nodeArgs || []), SCRIPT, ...args], {
     encoding: 'utf8',
+    cwd: opts.cwd || process.cwd(),
     env: opts.env || process.env,
     timeout: 10000,
   });
@@ -65,6 +78,77 @@ function parseJson(stdout) {
 
 function rgbaBuffer(pixels) {
   return Buffer.from(pixels.flat());
+}
+
+function crc32ForTest(buf) {
+  let c = 0xffffffff;
+  for (const byte of buf) {
+    c ^= byte;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function paethForTest(a, b, c) {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  if (pa <= pb && pa <= pc) return a;
+  if (pb <= pc) return b;
+  return c;
+}
+
+function pngChunkForTest(type, data) {
+  const typeBuf = Buffer.from(type, 'ascii');
+  const out = Buffer.alloc(12 + data.length);
+  out.writeUInt32BE(data.length, 0);
+  typeBuf.copy(out, 4);
+  data.copy(out, 8);
+  out.writeUInt32BE(crc32ForTest(Buffer.concat([typeBuf, data])), 8 + data.length);
+  return out;
+}
+
+function encodeFilteredPngForTest({ width, height, colorType, raw, filters }) {
+  const channels = colorType === 6 ? 4 : 3;
+  assert.equal(raw.length, width * height * channels);
+  assert.equal(filters.length, height);
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = colorType;
+
+  const rowBytes = width * channels;
+  const scanlines = Buffer.alloc((rowBytes + 1) * height);
+  for (let y = 0; y < height; y++) {
+    const filter = filters[y];
+    const row = raw.subarray(y * rowBytes, (y + 1) * rowBytes);
+    const prev = y > 0 ? raw.subarray((y - 1) * rowBytes, y * rowBytes) : null;
+    const outOffset = y * (rowBytes + 1);
+    scanlines[outOffset] = filter;
+    for (let x = 0; x < rowBytes; x++) {
+      const left = x >= channels ? row[x - channels] : 0;
+      const up = prev ? prev[x] : 0;
+      const upLeft = prev && x >= channels ? prev[x - channels] : 0;
+      let predictor = 0;
+      if (filter === 1) predictor = left;
+      else if (filter === 2) predictor = up;
+      else if (filter === 3) predictor = Math.floor((left + up) / 2);
+      else if (filter === 4) predictor = paethForTest(left, up, upLeft);
+      scanlines[outOffset + 1 + x] = (row[x] - predictor + 256) & 0xff;
+    }
+  }
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunkForTest('IHDR', ihdr),
+    pngChunkForTest('IDAT', zlib.deflateSync(scanlines)),
+    pngChunkForTest('IEND', Buffer.alloc(0)),
+  ]);
 }
 
 console.log('\nimagegen2 generate.cjs - offline validation tests\n');
@@ -466,6 +550,58 @@ test('chromaKeyPng uses tolerance for near-key pixels', () => {
   assert.equal(parsed.rgba[7], 255);
 });
 
+test('parsePng decodes PNG filter types 1-4', () => {
+  const raw = rgbaBuffer([
+    [1, 2, 3, 255],
+    [10, 20, 30, 255],
+    [40, 50, 60, 255],
+    [5, 7, 9, 255],
+    [15, 25, 35, 255],
+    [45, 55, 65, 255],
+    [8, 6, 4, 255],
+    [18, 28, 38, 255],
+    [48, 58, 68, 255],
+    [11, 12, 13, 255],
+    [21, 31, 41, 255],
+    [51, 61, 71, 255],
+    [14, 15, 16, 255],
+    [24, 34, 44, 255],
+    [54, 64, 74, 255],
+  ]);
+  const input = encodeFilteredPngForTest({
+    width: 3,
+    height: 5,
+    colorType: 6,
+    raw,
+    filters: [0, 1, 2, 3, 4],
+  });
+  assert.deepEqual(parsePng(input).rgba, raw);
+});
+
+test('chromaKeyPng supports 8-bit RGB PNG input', () => {
+  const rgb = Buffer.from([
+    255, 0, 255,
+    10, 20, 30,
+    250, 0, 250,
+  ]);
+  const input = encodeFilteredPngForTest({
+    width: 3,
+    height: 1,
+    colorType: 2,
+    raw: rgb,
+    filters: [1],
+  });
+  const result = chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 8 });
+  assert.equal(result.stats.removedPixels, 2);
+  assert.equal(result.stats.retainedVisiblePixels, 1);
+  const parsed = parsePng(result.buffer);
+  assert.deepEqual([...parsed.rgba], [
+    255, 0, 255, 0,
+    10, 20, 30, 255,
+    250, 0, 250, 0,
+  ]);
+});
+
 test('chromaKeyPng fails clearly when no key pixels are found', () => {
   const input = encodeRgbaPng({
     width: 1,
@@ -483,6 +619,147 @@ test('parsePng fails clearly for non-PNG input', () => {
     () => parsePng(Buffer.from('not a png')),
     (err) => err instanceof Imagegen2Error && err.message.includes('missing PNG signature')
   );
+});
+
+test('parsePng rejects corrupt chunk CRCs', () => {
+  const input = encodeRgbaPng({
+    width: 1,
+    height: 1,
+    rgba: rgbaBuffer([[255, 0, 255, 255]]),
+  });
+  const corrupted = Buffer.from(input);
+  corrupted[29] ^= 0xff; // First byte of IHDR CRC.
+  assert.throws(
+    () => parsePng(corrupted),
+    (err) => err instanceof Imagegen2Error && err.message.includes('CRC mismatch')
+  );
+});
+
+test('parsePng rejects missing IEND chunks', () => {
+  const input = encodeRgbaPng({
+    width: 1,
+    height: 1,
+    rgba: rgbaBuffer([[255, 0, 255, 255]]),
+  });
+  assert.throws(
+    () => parsePng(input.subarray(0, input.length - 12)),
+    (err) => err instanceof Imagegen2Error && err.message.includes('missing IEND')
+  );
+});
+
+test('parsePng wraps invalid IDAT compression errors', () => {
+  const input = encodeRgbaPng({
+    width: 1,
+    height: 1,
+    rgba: rgbaBuffer([[255, 0, 255, 255]]),
+  });
+  const idatOffset = input.indexOf(Buffer.from('IDAT', 'ascii'));
+  assert.ok(idatOffset > 0);
+  const corrupted = Buffer.from(input);
+  corrupted[idatOffset + 8] ^= 0xff; // Mutate compressed IDAT data.
+  const dataStart = idatOffset + 4;
+  const length = corrupted.readUInt32BE(idatOffset - 4);
+  const dataEnd = dataStart + length;
+  corrupted.writeUInt32BE(crc32ForTest(corrupted.subarray(idatOffset, dataEnd)), dataEnd);
+  assert.throws(
+    () => parsePng(corrupted),
+    (err) => err instanceof Imagegen2Error && err.message.includes('failed to inflate IDAT data')
+  );
+});
+
+console.log('\n  --- mocked API chroma-key tests ---\n');
+
+test('mocked chroma-key success writes stdout and history postprocess metadata', () => {
+  const cwd = mkdtempSync(path.join(TEMP_DIR, 'mock-success-'));
+  const output = path.join(cwd, 'sprite.png');
+  const image = encodeRgbaPng({
+    width: 2,
+    height: 1,
+    rgba: rgbaBuffer([
+      [255, 0, 255, 255],
+      [10, 20, 30, 255],
+    ]),
+  });
+  const r = run([
+    '--prompt', 'mock sprite',
+    '--output', output,
+    '--background', 'transparent',
+    '--transparent-mode', 'chroma-key',
+    '--chroma-key', '#ff00ff',
+    '--client-request-id', 'mock-success-request',
+  ], {
+    cwd,
+    nodeArgs: ['--import', MOCK_FETCH],
+    env: {
+      ...process.env,
+      OPENAI_API_KEY: 'test-key',
+      IMAGEGEN2_MOCK_B64_JSON: image.toString('base64'),
+      IMAGEGEN2_MOCK_REQUEST_ID: 'req_mock_success',
+    },
+  });
+  assert.equal(r.status, 0, r.stdout || r.stderr);
+  assert.ok(existsSync(output));
+  const body = parseJson(r.stdout);
+  assert.equal(body.success, true);
+  assert.equal(body.model, 'gpt-image-2');
+  assert.equal(body.background, 'transparent');
+  assert.equal(body.transparentMode, 'chroma-key');
+  assert.equal(body.clientRequestId, 'mock-success-request');
+  assert.equal(body.openaiRequestId, 'req_mock_success');
+  assert.deepEqual(body.postprocess, {
+    type: 'chroma-key',
+    status: 'completed',
+    chromaKey: '#ff00ff',
+    tolerance: 16,
+    removedPixels: 1,
+    retainedVisiblePixels: 1,
+    width: 2,
+    height: 1,
+  });
+
+  const history = parseJson(readFileSync(path.join(cwd, '.imagegen2-history.jsonl'), 'utf8'));
+  assert.equal(history.prompt, 'mock sprite');
+  assert.equal(history.params.requestBackground, 'opaque');
+  assert.equal(history.params.chromaKey, '#ff00ff');
+  assert.equal(history.params.chromaTolerance, 16);
+  assert.deepEqual(history.postprocess, body.postprocess);
+});
+
+test('mocked chroma-key failure reports machine-readable postprocess fields', () => {
+  const cwd = mkdtempSync(path.join(TEMP_DIR, 'mock-failure-'));
+  const output = path.join(cwd, 'sprite.png');
+  const image = encodeRgbaPng({
+    width: 1,
+    height: 1,
+    rgba: rgbaBuffer([[10, 20, 30, 255]]),
+  });
+  const r = run([
+    '--prompt', 'mock sprite',
+    '--output', output,
+    '--background', 'transparent',
+    '--transparent-mode', 'chroma-key',
+    '--chroma-key', '#ff00ff',
+    '--chroma-tolerance', '0',
+    '--client-request-id', 'mock-failure-request',
+  ], {
+    cwd,
+    nodeArgs: ['--import', MOCK_FETCH],
+    env: {
+      ...process.env,
+      OPENAI_API_KEY: 'test-key',
+      IMAGEGEN2_MOCK_B64_JSON: image.toString('base64'),
+      IMAGEGEN2_MOCK_REQUEST_ID: 'req_mock_failure',
+    },
+  });
+  assert.notEqual(r.status, 0);
+  assert.ok(!existsSync(output));
+  const body = parseJson(r.stdout);
+  assert.equal(body.success, false);
+  assert.ok(body.error.includes('found no pixels'));
+  assert.equal(body.clientRequestId, 'mock-failure-request');
+  assert.equal(body.openaiRequestId, 'req_mock_failure');
+  assert.equal(body.chromaKey, '#ff00ff');
+  assert.equal(body.tolerance, 0);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

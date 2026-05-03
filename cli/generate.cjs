@@ -358,7 +358,9 @@ function validate(args) {
 
   // Resolve image paths in place
   for (let i = 0; i < args.images.length; i++) {
-    const info = validateImageFile(args.images[i], `--image "${args.images[i]}"`, MAX_IMAGE_BYTES);
+    const info = validateImageFile(args.images[i], `--image "${args.images[i]}"`, {
+      maxBytes: MAX_IMAGE_BYTES,
+    });
     args.images[i] = info.resolved;
   }
 
@@ -394,6 +396,7 @@ const FETCH_TIMEOUT_MS = 120_000; // 2 minutes
 // ---------------------------------------------------------------------------
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MAX_CHROMA_KEY_PIXELS = 25_000_000;
 let CRC_TABLE = null;
 
 function crcTable() {
@@ -451,6 +454,7 @@ function parsePng(buffer) {
 
   let offset = 8;
   let ihdr = null;
+  let seenIend = false;
   const idatChunks = [];
   while (offset < buffer.length) {
     if (offset + 12 > buffer.length) {
@@ -465,8 +469,14 @@ function parsePng(buffer) {
       throw new Imagegen2Error(`Corrupt PNG: truncated ${type} chunk.`);
     }
     const data = buffer.subarray(dataStart, dataEnd);
+    const actualCrc = buffer.readUInt32BE(dataEnd);
+    const expectedCrc = crc32(buffer.subarray(offset + 4, dataEnd));
+    if (actualCrc !== expectedCrc) {
+      throw new Imagegen2Error(`Corrupt PNG: CRC mismatch in ${type} chunk.`);
+    }
     if (type === "IHDR") {
       if (length !== 13) throw new Imagegen2Error("Corrupt PNG: invalid IHDR length.");
+      if (ihdr) throw new Imagegen2Error("Corrupt PNG: duplicate IHDR chunk.");
       ihdr = {
         width: data.readUInt32BE(0),
         height: data.readUInt32BE(4),
@@ -479,13 +489,22 @@ function parsePng(buffer) {
     } else if (type === "IDAT") {
       idatChunks.push(data);
     } else if (type === "IEND") {
+      seenIend = true;
       break;
     }
     offset = crcEnd;
   }
 
   if (!ihdr) throw new Imagegen2Error("Corrupt PNG: missing IHDR chunk.");
+  if (!seenIend) throw new Imagegen2Error("Corrupt PNG: missing IEND chunk.");
   if (!idatChunks.length) throw new Imagegen2Error("Corrupt PNG: missing IDAT chunk.");
+  if (ihdr.width === 0 || ihdr.height === 0) {
+    throw new Imagegen2Error("Corrupt PNG: width and height must be greater than zero.");
+  }
+  const pixelCount = ihdr.width * ihdr.height;
+  if (pixelCount > MAX_CHROMA_KEY_PIXELS) {
+    throw new Imagegen2Error(`Unsupported PNG: ${pixelCount} pixels exceeds chroma-key limit of ${MAX_CHROMA_KEY_PIXELS}.`);
+  }
   if (ihdr.bitDepth !== 8) {
     throw new Imagegen2Error(`Unsupported PNG: bit depth ${ihdr.bitDepth}; only 8-bit PNGs are supported.`);
   }
@@ -499,8 +518,13 @@ function parsePng(buffer) {
   const channels = ihdr.colorType === 6 ? 4 : 3;
   const bytesPerPixel = channels;
   const rowBytes = ihdr.width * channels;
-  const inflated = zlib.inflateSync(Buffer.concat(idatChunks));
   const expected = (rowBytes + 1) * ihdr.height;
+  let inflated;
+  try {
+    inflated = zlib.inflateSync(Buffer.concat(idatChunks), { maxOutputLength: expected });
+  } catch (err) {
+    throw new Imagegen2Error(`Corrupt PNG: failed to inflate IDAT data: ${err.message}`);
+  }
   if (inflated.length !== expected) {
     throw new Imagegen2Error(`Corrupt PNG: expected ${expected} inflated bytes, got ${inflated.length}.`);
   }

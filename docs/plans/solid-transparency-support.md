@@ -27,7 +27,8 @@ node cli/generate.cjs \
 - The CLI appends a prompt suffix asking for a solid flat chroma-key
   background with no shadows, gradients, or background objects.
 - Local PNG post-processing supports 8-bit RGB/RGBA PNGs, PNG filters 0-4,
-  RGB-distance tolerance, and RGBA PNG re-encoding.
+  chunk CRC validation, bounded inflate, RGB-distance tolerance, and RGBA PNG
+  re-encoding.
 - `--chroma-tolerance <0-442>` defaults to `16`.
 - JPEG and WebP are rejected for chroma-key mode for now.
 - Dry-run, stdout, and history expose chroma-key/postprocess metadata so
@@ -50,8 +51,8 @@ npm run test:all
 Current local result:
 
 ```text
-npm test: 53 passed, 0 failed
-npm run test:all: 53 passed, 0 failed; live smoke skipped unless IMAGEGEN2_LIVE_TEST=1
+npm test: 60 passed, 0 failed
+IMAGEGEN2_LIVE_TEST=1 npm run test:all: 60 passed, 0 failed; live smoke passed
 ```
 
 Native `gpt-image-2` transparent-background behavior was probed on 2026-05-03
