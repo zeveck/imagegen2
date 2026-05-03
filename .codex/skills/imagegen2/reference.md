@@ -31,6 +31,10 @@ background from `gpt-image-2`, then locally removes matching pixels. Disclose
 that the transparency comes from local chroma-key cleanup, not native model
 alpha.
 
+Native `gpt-image-2` transparent-background behavior was probed on 2026-05-03.
+The API returned HTTP 400: "Transparent background is not supported for this
+model."
+
 ## Style Presets
 
 Adapt these as starting points. Do not paste a preset blindly if the user gave

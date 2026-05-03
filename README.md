@@ -285,3 +285,9 @@ IMAGEGEN2_LIVE_TEST=1 npm run test:all
 Model, size, transparency, and input-fidelity behavior are based on the current
 [OpenAI Image generation guide](https://developers.openai.com/api/docs/guides/image-generation)
 and [GPT Image 2 model page](https://developers.openai.com/api/docs/models/gpt-image-2).
+
+Native `gpt-image-2` transparent-background behavior was probed on
+2026-05-03 with `background: "transparent"` and `output_format: "png"`. The
+API returned HTTP 400: "Transparent background is not supported for this
+model." Use `--transparent-mode chroma-key` to keep `gpt-image-2`, or
+`--transparent-mode fallback-model` for native alpha through `gpt-image-1.5`.

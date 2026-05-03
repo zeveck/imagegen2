@@ -35,9 +35,11 @@ node /path/to/imagegen2-skill/generate.cjs --prompt "..." --output "..." [option
 - History is `.imagegen2-history.jsonl`.
 - `--input-fidelity` is not supported because `gpt-image-2` uses high-fidelity
   image inputs automatically.
-- `gpt-image-2` does not support native transparent backgrounds. Use
-  `--background transparent --transparent-mode fallback-model` only when true
-  alpha output is needed; disclose that this explicitly uses `gpt-image-1.5`.
+- Transparent output is explicit:
+  - `fallback-model` uses `gpt-image-1.5` for native alpha.
+  - `chroma-key` keeps `gpt-image-2`, requests an opaque solid key-color
+    background, and locally removes matching PNG pixels.
+  Disclose which path was used.
 
 ## Examples
 
@@ -63,6 +65,16 @@ node /path/to/imagegen2-skill/generate.cjs \
   --output "./assets/items/health-potion.png" \
   --background transparent \
   --transparent-mode fallback-model \
+  --quality low
+```
+
+```bash
+node /path/to/imagegen2-skill/generate.cjs \
+  --prompt "A cute 16-bit RPG kitten sprite, centered, no text, solid flat #ff00ff chroma-key background, no shadows, no gradients, no background objects" \
+  --output "./assets/sprites/kitten.png" \
+  --background transparent \
+  --transparent-mode chroma-key \
+  --chroma-key '#ff00ff' \
   --quality low
 ```
 
