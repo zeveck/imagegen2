@@ -70,6 +70,18 @@ node /path/to/imagegen2-skill/generate.cjs \
   --quality low
 ```
 
+GPT Image 2 chroma-key transparency:
+
+```bash
+node /path/to/imagegen2-skill/generate.cjs \
+  --prompt "A clean pixel art health potion icon, standalone, no text" \
+  --output "./assets/items/health-potion.png" \
+  --background transparent \
+  --transparent-mode chroma-key \
+  --chroma-key '#ff00ff' \
+  --quality low
+```
+
 ## CLI Parameters
 
 | Parameter | Values | Default | Notes |
@@ -79,8 +91,10 @@ node /path/to/imagegen2-skill/generate.cjs \
 | `--model` | model id | `gpt-image-2` | Do not override unless explicitly needed |
 | `--size` | `auto` or valid `WxH` | `1024x1024` | Edges <=3840, multiples of 16, ratio <=3:1 |
 | `--quality` | `low`, `medium`, `high`, `auto` | `low` | Use low for drafts, high for keepers |
-| `--background` | `auto`, `opaque`, `transparent` | `auto` | Transparent requires `--transparent-mode fallback-model` |
-| `--transparent-mode` | `reject`, `fallback-model`, `chroma-key` | `reject` | `chroma-key` is reserved and currently rejected |
+| `--background` | `auto`, `opaque`, `transparent` | `auto` | Transparent requires an explicit `--transparent-mode` |
+| `--transparent-mode` | `reject`, `fallback-model`, `chroma-key` | `reject` | `fallback-model` uses native alpha; `chroma-key` keeps `gpt-image-2` and performs local PNG cleanup |
+| `--chroma-key` | `#rrggbb` | `#00ff00` | Key color for chroma-key mode |
+| `--chroma-tolerance` | `0`-`442` | `16` | RGB distance tolerance for chroma-key cleanup |
 | `--output-compression` | `0`-`100` | none | JPEG/WebP only |
 | `--image` | image path, repeatable | none | Up to 16 PNG/JPG/WEBP references |
 | `--mask` | PNG path | none | Requires `--image`; API enforces dimensions/alpha |
@@ -103,9 +117,13 @@ Resolve fuzzy image references before invoking the CLI.
 
 ## Transparent Backgrounds
 
-OpenAI docs state that `gpt-image-2` does not currently support
-`background: "transparent"`. The CLI therefore rejects transparent requests by
-default.
+The CLI treats transparent output as an explicit mode choice:
+
+- `reject`: fail fast when transparent output is requested. This is the
+  default.
+- `fallback-model`: use `gpt-image-1.5` for native alpha.
+- `chroma-key`: keep `gpt-image-2`, request an opaque solid key-color
+  background, and locally remove matching PNG pixels.
 
 Use `--transparent-mode fallback-model` only when the user wants true native
 alpha output. This explicitly uses `gpt-image-1.5` for that request and records
@@ -113,8 +131,12 @@ the fallback in CLI output and history. Tell the user when this happens.
 
 Do not use JPEG for transparent output. Use PNG or WebP.
 
-`--transparent-mode chroma-key` is intentionally reserved but not implemented
-until a robust local background-removal helper exists.
+Use `--transparent-mode chroma-key` for game sprites when preserving
+`gpt-image-2` style quality is more important than native model alpha. Prefer
+PNG output and key colors absent from the subject, commonly `#ff00ff` or
+`#00ff00`. Add prompt constraints such as "solid flat chroma-key background",
+"no shadows", "no gradients", and "no background objects". Tell the user that
+transparency is local chroma-key cleanup rather than native model alpha.
 
 ## Prompt Guidance
 

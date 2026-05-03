@@ -61,12 +61,14 @@ Options:
                           2048x2048, 2048x1152, 3840x2160, 2160x3840
                           (default: 1024x1024)
   --quality <quality>     low | medium | high | auto (default: low)
-  --background <bg>       opaque | auto (default: auto)
-                          transparent is not supported by gpt-image-2 yet
+  --background <bg>       transparent | opaque | auto (default: auto)
+                          transparent requires --transparent-mode.
   --transparent-mode <m>  reject | fallback-model | chroma-key (default: reject)
                           fallback-model uses gpt-image-1.5 for native alpha;
-                          chroma-key is reserved for a later local remover.
-  --chroma-key <hex>      Chroma-key color for future local removal (default: #00ff00)
+                          chroma-key keeps gpt-image-2, requests an opaque
+                          solid key background, then removes it locally.
+  --chroma-key <hex>      Chroma-key color for local removal (default: #00ff00)
+  --chroma-tolerance <n>  Chroma-key RGB distance tolerance, 0-442 (default: 16)
   --output-compression <n> JPEG/WEBP compression, 0-100. Not valid for PNG.
   --model <model>         Model name (default: gpt-image-2)
   --client-request-id <id> Override generated request ID
@@ -92,6 +94,7 @@ Examples:
   node generate.cjs --prompt "Forest scene" --output "./bg.png" --size 3840x2160 --quality high
   node generate.cjs --prompt "Icon on a plain background" --output "./icon.png" --background opaque
   node generate.cjs --prompt "Game icon" --output "./icon.png" --background transparent --transparent-mode fallback-model
+  node generate.cjs --prompt "Pixel sprite" --output "./sprite.png" --background transparent --transparent-mode chroma-key --chroma-key "#ff00ff"
   node generate.cjs --prompt "Make it blue" --output "./edit.png" --image "./orig.png"
   node generate.cjs --prompt "Match this style" --output "./new.png" --image "./ref1.png" --image "./ref2.png"
 `.trim());
@@ -129,6 +132,7 @@ function parseArgs(argv) {
     fallbackModel: null,
     transparentMode: "reject",
     chromaKey: "#00ff00",
+    chromaTolerance: "16",
     outputCompression: null,
     images: [],           // Reference images for edits endpoint
     mask: null,           // PNG mask for inpainting
@@ -166,6 +170,9 @@ function parseArgs(argv) {
         break;
       case "--chroma-key":
         args.chromaKey = requireArgValue(flag, argv, ++i);
+        break;
+      case "--chroma-tolerance":
+        args.chromaTolerance = requireArgValue(flag, argv, ++i);
         break;
       case "--model":
         args.model = requireArgValue(flag, argv, ++i);
@@ -221,6 +228,7 @@ const MAX_MASK_BYTES = 4 * 1024 * 1024;    // 4 MB
 const MIME_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" };
 
 const VALID_MASK_EXTENSIONS = new Set([".png"]);
+const CHROMA_KEY_PROMPT_SUFFIX = "Solid flat {color} chroma-key background filling the canvas, no shadows, no gradients, no background objects.";
 
 function validateSize(size) {
   if (size === "auto") return;
@@ -279,6 +287,13 @@ function validate(args) {
   if (!/^#[0-9a-fA-F]{6}$/.test(args.chromaKey)) {
     fail(`Invalid --chroma-key "${args.chromaKey}". Must be a hex color like #00ff00.`);
   }
+  if (!/^[0-9]+$/.test(args.chromaTolerance)) {
+    fail(`Invalid --chroma-tolerance "${args.chromaTolerance}". Must be an integer 0-442.`);
+  }
+  args.chromaTolerance = Number(args.chromaTolerance);
+  if (args.chromaTolerance < 0 || args.chromaTolerance > 442) {
+    fail(`Invalid --chroma-tolerance "${args.chromaTolerance}". Must be an integer 0-442.`);
+  }
 
   const ext = path.extname(args.output).toLowerCase();
   if (!VALID_EXTENSIONS[ext]) {
@@ -290,10 +305,12 @@ function validate(args) {
       fail("JPEG does not support transparency. Use .png or .webp with --background transparent.");
     }
     if (args.transparentMode === "reject") {
-      fail('gpt-image-2 does not support background "transparent". Use --transparent-mode fallback-model for native alpha output.');
+      fail('gpt-image-2 does not use native background "transparent" by default. Use --transparent-mode fallback-model for native alpha or --transparent-mode chroma-key for local PNG cleanup.');
     }
     if (args.transparentMode === "chroma-key") {
-      fail("--transparent-mode chroma-key is not implemented yet. Use --transparent-mode fallback-model for native alpha output.");
+      if (ext !== ".png") {
+        fail("--transparent-mode chroma-key currently requires PNG output. Use .png or --transparent-mode fallback-model.");
+      }
     }
     if (args.transparentMode === "fallback-model") {
       args.fallbackModel = "gpt-image-1.5";
@@ -456,13 +473,14 @@ async function fetchWithRetry(url, options, clientRequestId) {
 // NOTE: Buffer-backed Blobs are replayable, so retries in fetchWithRetry
 // work correctly. Do not switch to streams without revisiting retry safety.
 function appendSharedFormFields(form, args, outputFormat) {
-  form.append("model", args.model);
-  form.append("prompt", args.prompt);
+  const normalized = normalizeRequest(args, outputFormat);
+  form.append("model", normalized.model);
+  form.append("prompt", normalized.prompt);
   form.append("size", args.size);
   form.append("quality", args.quality);
-  form.append("output_format", outputFormat);
-  if (args.background !== "auto") {
-    form.append("background", args.background);
+  form.append("output_format", normalized.outputFormat);
+  if (normalized.background !== "auto") {
+    form.append("background", normalized.background);
   }
   if (args.outputCompression !== null) {
     form.append("output_compression", String(args.outputCompression));
@@ -510,20 +528,52 @@ function buildHeaders(apiKey, clientRequestId, isMultipart = false) {
 }
 
 function buildGenerationBody(args, outputFormat) {
+  const normalized = normalizeRequest(args, outputFormat);
   const requestBody = {
-    model: args.model,
-    prompt: args.prompt,
+    model: normalized.model,
+    prompt: normalized.prompt,
     size: args.size,
     quality: args.quality,
-    output_format: outputFormat,
+    output_format: normalized.outputFormat,
   };
-  if (args.background !== "auto") {
-    requestBody.background = args.background;
+  if (normalized.background !== "auto") {
+    requestBody.background = normalized.background;
   }
   if (args.outputCompression !== null) {
     requestBody.output_compression = args.outputCompression;
   }
   return requestBody;
+}
+
+function chromaKeyPromptSuffix(color) {
+  return CHROMA_KEY_PROMPT_SUFFIX.replace("{color}", color.toLowerCase());
+}
+
+function normalizeRequest(args, outputFormat) {
+  if (args.background === "transparent" && args.transparentMode === "chroma-key") {
+    return {
+      model: "gpt-image-2",
+      prompt: `${args.prompt}\n\n${chromaKeyPromptSuffix(args.chromaKey)}`,
+      background: "opaque",
+      outputFormat: "png",
+    };
+  }
+  return {
+    model: args.model,
+    prompt: args.prompt,
+    background: args.background,
+    outputFormat,
+  };
+}
+
+function buildPostprocessSummary(args) {
+  if (args.background !== "transparent" || args.transparentMode !== "chroma-key") return null;
+  return {
+    type: "chroma-key",
+    chromaKey: args.chromaKey.toLowerCase(),
+    tolerance: args.chromaTolerance,
+    status: "pending-local-png-processing",
+  };
 }
 
 function buildDryRun(args, outputFormat, outputPath, clientRequestId) {
@@ -544,9 +594,11 @@ function buildDryRun(args, outputFormat, outputPath, clientRequestId) {
     endpoint,
     method: "POST",
     model: args.model,
+    background: args.background,
     transparentMode: args.transparentMode,
     ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
     ...(args.transparentMode === "chroma-key" ? { chromaKey: args.chromaKey } : {}),
+    ...(buildPostprocessSummary(args) ? { postprocess: buildPostprocessSummary(args) } : {}),
     output: outputPath,
     outputFormat,
     clientRequestId,
@@ -577,6 +629,13 @@ async function main() {
   if (args.dryRun) {
     process.stdout.write(JSON.stringify(buildDryRun(args, outputFormat, outputPath, clientRequestId)) + "\n");
     return;
+  }
+
+  if (args.background === "transparent" && args.transparentMode === "chroma-key") {
+    fail("--transparent-mode chroma-key request normalization is available in --dry-run; PNG post-processing lands in the next implementation phase.", {
+      clientRequestId,
+      postprocess: buildPostprocessSummary(args),
+    });
   }
 
   // Check API key

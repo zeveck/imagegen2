@@ -25,6 +25,12 @@ Limitations:
 Use `--transparent-mode fallback-model` for true native alpha output. That path
 uses `gpt-image-1.5` explicitly and should be disclosed to the user.
 
+Use `--transparent-mode chroma-key` for PNG sprite workflows that should keep
+`gpt-image-2` generation quality. That path requests an opaque solid key-color
+background from `gpt-image-2`, then locally removes matching pixels. Disclose
+that the transparency comes from local chroma-key cleanup, not native model
+alpha.
+
 ## Style Presets
 
 Adapt these as starting points. Do not paste a preset blindly if the user gave
@@ -162,6 +168,11 @@ calculator. Avoid hardcoding stale price promises into user-facing output.
 - Prefer a blank or opaque background with `gpt-image-2` when alpha is not
   strictly required.
 - Use `--transparent-mode fallback-model` for actual alpha PNG/WebP output.
-- Avoid JPEG for transparency.
-- For future chroma-key workflows, choose a key color absent from the subject,
-  such as `#00ff00` or `#ff00ff`, and request a perfectly flat background.
+- Use `--transparent-mode chroma-key` for PNG sprites when preserving
+  `gpt-image-2` style quality is more important than native alpha.
+- Avoid JPEG for transparency. Chroma-key mode currently targets PNG output.
+- Choose a key color absent from the subject, such as `#ff00ff` or `#00ff00`.
+- Ask for a "solid flat chroma-key background", with "no shadows", "no
+  gradients", and "no background objects".
+- Keep `--chroma-tolerance` conservative. The default is `16`; valid values are
+  `0` through `442`.
