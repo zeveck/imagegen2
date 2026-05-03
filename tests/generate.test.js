@@ -79,11 +79,12 @@ test('--help documents gpt-image-2 and flexible options', () => {
   assert.ok(r.stdout.includes('--output-compression'));
   assert.ok(r.stdout.includes('--transparent-mode'));
   assert.ok(r.stdout.includes('--chroma-key'));
+  assert.ok(r.stdout.includes('--chroma-tolerance'));
   assert.ok(r.stdout.includes('--dry-run'));
   assert.ok(r.stdout.includes('--image'));
   assert.ok(r.stdout.includes('--mask'));
   assert.ok(r.stdout.includes('--input-fidelity'));
-  assert.ok(r.stdout.includes('transparent is not supported'));
+  assert.ok(r.stdout.includes('transparent requires --transparent-mode'));
 });
 
 test('no arguments exits non-zero with "--prompt is required."', () => {
@@ -180,7 +181,7 @@ test('--background fuzzy exits non-zero', () => {
 test('--background transparent exits non-zero for gpt-image-2', () => {
   const r = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--background', 'transparent']);
   assert.notEqual(r.status, 0);
-  assert.ok(r.stdout.includes('gpt-image-2 does not support background'));
+  assert.ok(r.stdout.includes('gpt-image-2 does not use native background'));
 });
 
 test('--background transparent fallback-model dry-runs as gpt-image-1.5', () => {
@@ -211,16 +212,43 @@ test('--background transparent fallback-model rejects JPEG', () => {
   assert.ok(r.stdout.includes('JPEG does not support transparency'));
 });
 
-test('--transparent-mode chroma-key is explicitly deferred', () => {
+test('--background transparent chroma-key dry-runs as gpt-image-2 opaque PNG with postprocess summary', () => {
   const r = run([
     '--dry-run',
     '--prompt', 'test',
     '--output', 't.png',
     '--background', 'transparent',
     '--transparent-mode', 'chroma-key',
+    '--chroma-key', '#ff00ff',
+  ]);
+  assert.equal(r.status, 0, r.stdout);
+  const body = parseJson(r.stdout);
+  assert.equal(body.model, 'gpt-image-2');
+  assert.equal(body.background, 'transparent');
+  assert.equal(body.transparentMode, 'chroma-key');
+  assert.equal(body.chromaKey, '#ff00ff');
+  assert.equal(body.params.model, 'gpt-image-2');
+  assert.equal(body.params.background, 'opaque');
+  assert.equal(body.params.output_format, 'png');
+  assert.ok(body.params.prompt.includes('Solid flat #ff00ff chroma-key background'));
+  assert.deepEqual(body.postprocess, {
+    type: 'chroma-key',
+    chromaKey: '#ff00ff',
+    tolerance: 16,
+    status: 'pending-local-png-processing',
+  });
+});
+
+test('--background transparent chroma-key rejects WEBP until alpha processing exists', () => {
+  const r = run([
+    '--dry-run',
+    '--prompt', 'test',
+    '--output', 't.webp',
+    '--background', 'transparent',
+    '--transparent-mode', 'chroma-key',
   ]);
   assert.notEqual(r.status, 0);
-  assert.ok(r.stdout.includes('chroma-key is not implemented yet'));
+  assert.ok(r.stdout.includes('currently requires PNG output'));
 });
 
 test('--chroma-key validates hex color', () => {
@@ -232,6 +260,30 @@ test('--chroma-key validates hex color', () => {
   ]);
   assert.notEqual(r.status, 0);
   assert.ok(r.stdout.includes('Invalid --chroma-key'));
+});
+
+test('--chroma-tolerance validates range', () => {
+  const valid = run([
+    '--dry-run',
+    '--prompt', 'test',
+    '--output', 't.png',
+    '--background', 'transparent',
+    '--transparent-mode', 'chroma-key',
+    '--chroma-tolerance', '442',
+  ]);
+  assert.equal(valid.status, 0, valid.stdout);
+  assert.equal(parseJson(valid.stdout).postprocess.tolerance, 442);
+
+  const invalid = run([
+    '--dry-run',
+    '--prompt', 'test',
+    '--output', 't.png',
+    '--background', 'transparent',
+    '--transparent-mode', 'chroma-key',
+    '--chroma-tolerance', '443',
+  ]);
+  assert.notEqual(invalid.status, 0);
+  assert.ok(invalid.stdout.includes('Invalid --chroma-tolerance'));
 });
 
 test('--transparent-mode without transparent background exits non-zero', () => {

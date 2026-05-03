@@ -17,7 +17,7 @@ identical.
 | Skill | Back end | Good fit | Tradeoffs |
 |-------|----------|----------|-----------|
 | [`imagegen`](https://github.com/zeveck/imagegen) | OpenAI `gpt-image-1` | Classic game assets, direct transparent PNG/WebP sprites and icons | Older OpenAI image model, legacy size set |
-| `imagegen2` | OpenAI `gpt-image-2` | Current OpenAI image path, flexible sizes up to 4K-class outputs, high-fidelity edits | No native transparent backgrounds; uses an explicit `gpt-image-1.5` fallback only when requested |
+| `imagegen2` | OpenAI `gpt-image-2` | Current OpenAI image path, flexible sizes up to 4K-class outputs, high-fidelity edits | Native transparent backgrounds require an explicit `gpt-image-1.5` fallback; `gpt-image-2` transparent sprites can use local chroma-key cleanup |
 | [`nanogen`](https://github.com/zeveck/nanogen) | Google Gemini / Nano Banana image models | Rich style catalog, natural-language edits, multi-image composition, multi-turn refinement | No native alpha output; often returns JPEG and uses chromakey/post-processing for transparent-style assets |
 
 ## Requirements
@@ -189,8 +189,13 @@ OpenAI docs. Use 4K sizes intentionally.
 
 ## Transparent Backgrounds
 
-OpenAI docs state that `gpt-image-2` does not currently support
-`background: "transparent"`. The CLI rejects transparent requests by default.
+The CLI treats transparent backgrounds as an explicit mode choice:
+
+- `reject`: fail fast when transparent output is requested. This is the
+  default so callers do not accidentally receive opaque output.
+- `fallback-model`: request native alpha from `gpt-image-1.5`.
+- `chroma-key`: keep `gpt-image-2`, request an opaque solid-color key
+  background, then remove that key color locally from PNG output.
 
 For true native alpha output, explicitly opt into the fallback model:
 
@@ -206,8 +211,25 @@ node .codex/skills/imagegen2/generate.cjs \
 This uses `gpt-image-1.5` for that request and records the fallback in CLI
 output/history. JPEG cannot be used for transparent output; use PNG or WebP.
 
-`--transparent-mode chroma-key` is reserved for a future local post-processing
-path and currently fails clearly.
+For sprite work where preserving `gpt-image-2` style quality is more important
+than native model alpha, use chroma-key PNG output:
+
+```bash
+node cli/generate.cjs \
+  --prompt "A cute 16-bit RPG kitten sprite, centered, no text" \
+  --output "./assets/kitten.png" \
+  --background transparent \
+  --transparent-mode chroma-key \
+  --chroma-key '#ff00ff' \
+  --quality low
+```
+
+Chroma-key mode normalizes the API request to `background: "opaque"` and adds
+prompt guidance for a solid flat key background. Use key colors absent from the
+subject, commonly `#ff00ff` or `#00ff00`, and include prompt constraints such
+as "solid flat chroma-key background", "no shadows", "no gradients", and "no
+background objects". Agents should disclose that this is local chroma-key
+cleanup rather than native model alpha.
 
 ## Common Options
 
@@ -218,6 +240,8 @@ path and currently fails clearly.
 --quality <low|medium|high|auto>
 --background <auto|opaque|transparent>
 --transparent-mode <reject|fallback-model|chroma-key>
+--chroma-key <#rrggbb>            # chroma-key mode only, default #00ff00
+--chroma-tolerance <0-442>        # chroma-key RGB distance, default 16
 --output-compression <0-100>     # JPEG/WebP only
 --image <path>                   # repeatable, max 16
 --mask <png-path>

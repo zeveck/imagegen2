@@ -13,7 +13,7 @@ Gemini.
 | `.imagegen-history.jsonl` | `.imagegen2-history.jsonl` |
 | fixed legacy sizes | flexible `gpt-image-2` sizes |
 | `--input-fidelity high|low` | unsupported; `gpt-image-2` uses high fidelity automatically |
-| `--background transparent` directly | requires `--transparent-mode fallback-model` |
+| `--background transparent` directly | requires an explicit `--transparent-mode`: `fallback-model` for native alpha or `chroma-key` for local PNG cleanup |
 
 ## Command Examples
 
@@ -42,7 +42,7 @@ node .claude/skills/imagegen/generate.cjs \
   --background transparent
 ```
 
-New transparent output:
+New native-alpha transparent output:
 
 ```bash
 node cli/generate.cjs \
@@ -51,6 +51,21 @@ node cli/generate.cjs \
   --background transparent \
   --transparent-mode fallback-model
 ```
+
+New `gpt-image-2` chroma-key transparent output:
+
+```bash
+node cli/generate.cjs \
+  --prompt "A game icon, solid flat #ff00ff chroma-key background, no shadows, no gradients, no background objects" \
+  --output "./assets/ui/icon.png" \
+  --background transparent \
+  --transparent-mode chroma-key \
+  --chroma-key '#ff00ff'
+```
+
+Use `fallback-model` when native model alpha matters. Use `chroma-key` when
+you want to keep the `gpt-image-2` generation path and accept local solid-color
+background removal. Chroma-key mode is PNG-only in the initial implementation.
 
 Old reference edit:
 
