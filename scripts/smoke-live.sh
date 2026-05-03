@@ -28,3 +28,33 @@ node cli/generate.cjs \
   --image "$OUT_DIR/red-circle.png" \
   --quality low \
   --size 1024x1024
+
+node cli/generate.cjs \
+  --prompt "A simple red circle, centered, no text, solid flat #ff00ff chroma-key background, no shadows, no gradients, no background objects" \
+  --output "$OUT_DIR/red-circle-transparent.png" \
+  --background transparent \
+  --transparent-mode chroma-key \
+  --chroma-key '#ff00ff' \
+  --quality low \
+  --size 1024x1024
+
+node - "$OUT_DIR/red-circle-transparent.png" <<'NODE'
+const fs = require("fs");
+const { parsePng } = require("./cli/generate.cjs");
+
+const file = process.argv[2];
+const image = parsePng(fs.readFileSync(file));
+let transparent = 0;
+let visible = 0;
+for (let i = 0; i < image.rgba.length; i += 4) {
+  if (image.rgba[i + 3] === 0) transparent++;
+  if (image.rgba[i + 3] === 255) visible++;
+}
+if (transparent === 0) {
+  throw new Error(`${file} has no transparent pixels after chroma-key cleanup`);
+}
+if (visible === 0) {
+  throw new Error(`${file} has no fully visible pixels after chroma-key cleanup`);
+}
+console.log(`Verified alpha in ${file}: ${transparent} transparent pixels, ${visible} visible pixels`);
+NODE

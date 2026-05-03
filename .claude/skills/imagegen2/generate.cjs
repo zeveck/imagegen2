@@ -14,6 +14,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const zlib = require("zlib");
 
 // Load .env file if present (Node 20.12+ built-in, no dependencies).
 // Search cwd first, then walk up from the script's own directory so the
@@ -108,6 +109,14 @@ Examples:
 function fail(message, extra = {}) {
   process.stdout.write(JSON.stringify({ success: false, error: message, ...extra }) + "\n");
   process.exit(1);
+}
+
+class Imagegen2Error extends Error {
+  constructor(message, extra = {}) {
+    super(message);
+    this.name = "Imagegen2Error";
+    this.extra = extra;
+  }
 }
 
 function requireArgValue(flag, argv, index) {
@@ -311,6 +320,7 @@ function validate(args) {
       if (ext !== ".png") {
         fail("--transparent-mode chroma-key currently requires PNG output. Use .png or --transparent-mode fallback-model.");
       }
+      args.model = "gpt-image-2";
     }
     if (args.transparentMode === "fallback-model") {
       args.fallbackModel = "gpt-image-1.5";
@@ -378,6 +388,235 @@ const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503]);
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const FETCH_TIMEOUT_MS = 120_000; // 2 minutes
+
+// ---------------------------------------------------------------------------
+// Minimal PNG chroma-key post-processing
+// ---------------------------------------------------------------------------
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+let CRC_TABLE = null;
+
+function crcTable() {
+  if (CRC_TABLE) return CRC_TABLE;
+  CRC_TABLE = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    CRC_TABLE[n] = c >>> 0;
+  }
+  return CRC_TABLE;
+}
+
+function crc32(buf) {
+  const table = crcTable();
+  let c = 0xffffffff;
+  for (const byte of buf) {
+    c = table[(c ^ byte) & 0xff] ^ (c >>> 8);
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function parseHexColor(hex) {
+  const normalized = hex.toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(normalized)) {
+    throw new Imagegen2Error(`Invalid chroma key "${hex}". Must be a hex color like #00ff00.`);
+  }
+  return {
+    hex: normalized,
+    r: Number.parseInt(normalized.slice(1, 3), 16),
+    g: Number.parseInt(normalized.slice(3, 5), 16),
+    b: Number.parseInt(normalized.slice(5, 7), 16),
+  };
+}
+
+function paethPredictor(a, b, c) {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  if (pa <= pb && pa <= pc) return a;
+  if (pb <= pc) return b;
+  return c;
+}
+
+function parsePng(buffer) {
+  if (!Buffer.isBuffer(buffer)) {
+    throw new Imagegen2Error("PNG parser expected a Buffer.");
+  }
+  if (buffer.length < PNG_SIGNATURE.length || !buffer.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    throw new Imagegen2Error("Unsupported PNG: missing PNG signature.");
+  }
+
+  let offset = 8;
+  let ihdr = null;
+  const idatChunks = [];
+  while (offset < buffer.length) {
+    if (offset + 12 > buffer.length) {
+      throw new Imagegen2Error("Corrupt PNG: truncated chunk header.");
+    }
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.toString("ascii", offset + 4, offset + 8);
+    const dataStart = offset + 8;
+    const dataEnd = dataStart + length;
+    const crcEnd = dataEnd + 4;
+    if (crcEnd > buffer.length) {
+      throw new Imagegen2Error(`Corrupt PNG: truncated ${type} chunk.`);
+    }
+    const data = buffer.subarray(dataStart, dataEnd);
+    if (type === "IHDR") {
+      if (length !== 13) throw new Imagegen2Error("Corrupt PNG: invalid IHDR length.");
+      ihdr = {
+        width: data.readUInt32BE(0),
+        height: data.readUInt32BE(4),
+        bitDepth: data[8],
+        colorType: data[9],
+        compression: data[10],
+        filter: data[11],
+        interlace: data[12],
+      };
+    } else if (type === "IDAT") {
+      idatChunks.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+    offset = crcEnd;
+  }
+
+  if (!ihdr) throw new Imagegen2Error("Corrupt PNG: missing IHDR chunk.");
+  if (!idatChunks.length) throw new Imagegen2Error("Corrupt PNG: missing IDAT chunk.");
+  if (ihdr.bitDepth !== 8) {
+    throw new Imagegen2Error(`Unsupported PNG: bit depth ${ihdr.bitDepth}; only 8-bit PNGs are supported.`);
+  }
+  if (![2, 6].includes(ihdr.colorType)) {
+    throw new Imagegen2Error(`Unsupported PNG: color type ${ihdr.colorType}; only RGB and RGBA PNGs are supported.`);
+  }
+  if (ihdr.compression !== 0 || ihdr.filter !== 0 || ihdr.interlace !== 0) {
+    throw new Imagegen2Error("Unsupported PNG: only standard non-interlaced PNGs are supported.");
+  }
+
+  const channels = ihdr.colorType === 6 ? 4 : 3;
+  const bytesPerPixel = channels;
+  const rowBytes = ihdr.width * channels;
+  const inflated = zlib.inflateSync(Buffer.concat(idatChunks));
+  const expected = (rowBytes + 1) * ihdr.height;
+  if (inflated.length !== expected) {
+    throw new Imagegen2Error(`Corrupt PNG: expected ${expected} inflated bytes, got ${inflated.length}.`);
+  }
+
+  const raw = Buffer.alloc(rowBytes * ihdr.height);
+  let inOffset = 0;
+  let outOffset = 0;
+  for (let y = 0; y < ihdr.height; y++) {
+    const filter = inflated[inOffset++];
+    if (filter > 4) throw new Imagegen2Error(`Unsupported PNG filter type ${filter}.`);
+    for (let x = 0; x < rowBytes; x++) {
+      const rawByte = inflated[inOffset++];
+      const left = x >= bytesPerPixel ? raw[outOffset + x - bytesPerPixel] : 0;
+      const up = y > 0 ? raw[outOffset + x - rowBytes] : 0;
+      const upLeft = y > 0 && x >= bytesPerPixel ? raw[outOffset + x - rowBytes - bytesPerPixel] : 0;
+      let value;
+      if (filter === 0) value = rawByte;
+      else if (filter === 1) value = rawByte + left;
+      else if (filter === 2) value = rawByte + up;
+      else if (filter === 3) value = rawByte + Math.floor((left + up) / 2);
+      else value = rawByte + paethPredictor(left, up, upLeft);
+      raw[outOffset + x] = value & 0xff;
+    }
+    outOffset += rowBytes;
+  }
+
+  const rgba = Buffer.alloc(ihdr.width * ihdr.height * 4);
+  for (let src = 0, dst = 0; src < raw.length; src += channels, dst += 4) {
+    rgba[dst] = raw[src];
+    rgba[dst + 1] = raw[src + 1];
+    rgba[dst + 2] = raw[src + 2];
+    rgba[dst + 3] = channels === 4 ? raw[src + 3] : 255;
+  }
+
+  return { width: ihdr.width, height: ihdr.height, rgba };
+}
+
+function pngChunk(type, data) {
+  const typeBuf = Buffer.from(type, "ascii");
+  const out = Buffer.alloc(12 + data.length);
+  out.writeUInt32BE(data.length, 0);
+  typeBuf.copy(out, 4);
+  data.copy(out, 8);
+  const crcInput = Buffer.concat([typeBuf, data]);
+  out.writeUInt32BE(crc32(crcInput), 8 + data.length);
+  return out;
+}
+
+function encodeRgbaPng({ width, height, rgba }) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    throw new Imagegen2Error("Invalid PNG dimensions for encoding.");
+  }
+  if (!Buffer.isBuffer(rgba) || rgba.length !== width * height * 4) {
+    throw new Imagegen2Error("Invalid RGBA buffer for PNG encoding.");
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // RGBA
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  const rowBytes = width * 4;
+  const scanlines = Buffer.alloc((rowBytes + 1) * height);
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * (rowBytes + 1);
+    scanlines[rowStart] = 0; // no filter
+    rgba.copy(scanlines, rowStart + 1, y * rowBytes, (y + 1) * rowBytes);
+  }
+
+  return Buffer.concat([
+    PNG_SIGNATURE,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlib.deflateSync(scanlines)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function chromaKeyPng(buffer, { chromaKey, tolerance }) {
+  const key = parseHexColor(chromaKey);
+  const parsed = parsePng(buffer);
+  let removedPixels = 0;
+  let opaquePixels = 0;
+  for (let i = 0; i < parsed.rgba.length; i += 4) {
+    const dr = parsed.rgba[i] - key.r;
+    const dg = parsed.rgba[i + 1] - key.g;
+    const db = parsed.rgba[i + 2] - key.b;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (distance <= tolerance) {
+      parsed.rgba[i + 3] = 0;
+      removedPixels++;
+    } else if (parsed.rgba[i + 3] > 0) {
+      opaquePixels++;
+    }
+  }
+  if (removedPixels === 0) {
+    throw new Imagegen2Error(`Chroma-key post-processing found no pixels matching ${key.hex} within tolerance ${tolerance}.`, {
+      chromaKey: key.hex,
+      tolerance,
+    });
+  }
+  return {
+    buffer: encodeRgbaPng(parsed),
+    stats: {
+      chromaKey: key.hex,
+      tolerance,
+      removedPixels,
+      retainedVisiblePixels: opaquePixels,
+      width: parsed.width,
+      height: parsed.height,
+    },
+  };
+}
 
 async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -631,13 +870,6 @@ async function main() {
     return;
   }
 
-  if (args.background === "transparent" && args.transparentMode === "chroma-key") {
-    fail("--transparent-mode chroma-key request normalization is available in --dry-run; PNG post-processing lands in the next implementation phase.", {
-      clientRequestId,
-      postprocess: buildPostprocessSummary(args),
-    });
-  }
-
   // Check API key
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -692,7 +924,22 @@ async function main() {
     fail("Unexpected API response: no image data (b64_json) returned.");
   }
 
-  const imageBuffer = Buffer.from(imageData.b64_json, "base64");
+  let imageBuffer = Buffer.from(imageData.b64_json, "base64");
+  let postprocessResult = null;
+  if (args.background === "transparent" && args.transparentMode === "chroma-key") {
+    try {
+      postprocessResult = chromaKeyPng(imageBuffer, {
+        chromaKey: args.chromaKey,
+        tolerance: args.chromaTolerance,
+      });
+      imageBuffer = postprocessResult.buffer;
+    } catch (err) {
+      if (err instanceof Imagegen2Error) {
+        fail(err.message, { clientRequestId, openaiRequestId, ...err.extra });
+      }
+      throw err;
+    }
+  }
 
   // Write to file
   try {
@@ -718,6 +965,13 @@ async function main() {
     model: args.model,
     transparentMode: args.transparentMode,
     ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
+    ...(postprocessResult ? {
+      postprocess: {
+        type: "chroma-key",
+        status: "completed",
+        ...postprocessResult.stats,
+      },
+    } : {}),
     clientRequestId,
     openaiRequestId,
     ...(args.outputCompression !== null ? { outputCompression: args.outputCompression } : {}),
@@ -740,6 +994,11 @@ async function main() {
         size: args.size,
         quality: args.quality,
         background: args.background,
+        ...(args.background === "transparent" && args.transparentMode === "chroma-key" ? {
+          requestBackground: "opaque",
+          chromaKey: args.chromaKey.toLowerCase(),
+          chromaTolerance: args.chromaTolerance,
+        } : {}),
         model: args.model,
         transparentMode: args.transparentMode,
         ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
@@ -751,6 +1010,13 @@ async function main() {
       bytes: imageBuffer.length,
       outputFormat: outputFormat,
     };
+    if (postprocessResult) {
+      historyEntry.postprocess = {
+        type: "chroma-key",
+        status: "completed",
+        ...postprocessResult.stats,
+      };
+    }
 
     if (args.images.length > 0) {
       historyEntry.inputImages = args.images;
@@ -771,6 +1037,15 @@ async function main() {
   process.stdout.write(JSON.stringify(result) + "\n");
 }
 
-main().catch((err) => {
-  fail(`Unexpected error: ${err.message}`);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    fail(`Unexpected error: ${err.message}`);
+  });
+} else {
+  module.exports = {
+    Imagegen2Error,
+    parsePng,
+    encodeRgbaPng,
+    chromaKeyPng,
+  };
+}

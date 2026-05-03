@@ -8,6 +8,7 @@
 import { spawnSync } from 'node:child_process';
 import { strict as assert } from 'node:assert';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -15,6 +16,8 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.resolve(__dirname, '../cli/generate.cjs');
 const REFERENCE = path.resolve(__dirname, '../cli/reference.md');
+const require = createRequire(import.meta.url);
+const { Imagegen2Error, encodeRgbaPng, parsePng, chromaKeyPng } = require(SCRIPT);
 
 const TEMP_DIR = mkdtempSync(path.join(tmpdir(), 'imagegen2-test-'));
 const TEMP_PNG = path.join(TEMP_DIR, 'test.png');
@@ -58,6 +61,10 @@ function run(args, opts = {}) {
 
 function parseJson(stdout) {
   return JSON.parse(stdout.trim());
+}
+
+function rgbaBuffer(pixels) {
+  return Buffer.from(pixels.flat());
 }
 
 console.log('\nimagegen2 generate.cjs - offline validation tests\n');
@@ -406,6 +413,76 @@ test('--input-fidelity high exits non-zero for gpt-image-2', () => {
 test('--image with valid WEBP passes validation', () => {
   const r = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--image', TEMP_WEBP]);
   assert.equal(r.status, 0, r.stdout);
+});
+
+console.log('\n  --- chroma-key post-processing tests ---\n');
+
+test('chromaKeyPng removes exact key pixels and writes RGBA PNG', () => {
+  const input = encodeRgbaPng({
+    width: 2,
+    height: 2,
+    rgba: rgbaBuffer([
+      [255, 0, 255, 255],
+      [10, 20, 30, 255],
+      [255, 0, 255, 255],
+      [40, 50, 60, 255],
+    ]),
+  });
+  const result = chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 0 });
+  assert.equal(result.stats.removedPixels, 2);
+  assert.equal(result.stats.retainedVisiblePixels, 2);
+  const parsed = parsePng(result.buffer);
+  assert.equal(parsed.rgba[3], 0);
+  assert.equal(parsed.rgba[7], 255);
+  assert.equal(parsed.rgba[11], 0);
+  assert.equal(parsed.rgba[15], 255);
+});
+
+test('chromaKeyPng preserves existing non-key alpha', () => {
+  const input = encodeRgbaPng({
+    width: 2,
+    height: 1,
+    rgba: rgbaBuffer([
+      [255, 0, 255, 255],
+      [10, 20, 30, 128],
+    ]),
+  });
+  const parsed = parsePng(chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 0 }).buffer);
+  assert.equal(parsed.rgba[3], 0);
+  assert.equal(parsed.rgba[7], 128);
+});
+
+test('chromaKeyPng uses tolerance for near-key pixels', () => {
+  const input = encodeRgbaPng({
+    width: 2,
+    height: 1,
+    rgba: rgbaBuffer([
+      [250, 0, 250, 255],
+      [240, 0, 240, 255],
+    ]),
+  });
+  const parsed = parsePng(chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 8 }).buffer);
+  assert.equal(parsed.rgba[3], 0);
+  assert.equal(parsed.rgba[7], 255);
+});
+
+test('chromaKeyPng fails clearly when no key pixels are found', () => {
+  const input = encodeRgbaPng({
+    width: 1,
+    height: 1,
+    rgba: rgbaBuffer([[10, 20, 30, 255]]),
+  });
+  assert.throws(
+    () => chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 0 }),
+    (err) => err instanceof Imagegen2Error && err.message.includes('found no pixels')
+  );
+});
+
+test('parsePng fails clearly for non-PNG input', () => {
+  assert.throws(
+    () => parsePng(Buffer.from('not a png')),
+    (err) => err instanceof Imagegen2Error && err.message.includes('missing PNG signature')
+  );
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
