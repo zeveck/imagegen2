@@ -17,7 +17,7 @@ identical.
 | Skill | Back end | Good fit | Tradeoffs |
 |-------|----------|----------|-----------|
 | [`imagegen`](https://github.com/zeveck/imagegen) | OpenAI `gpt-image-1` | Classic game assets, direct transparent PNG/WebP sprites and icons | Older OpenAI image model, legacy size set |
-| `imagegen2` | OpenAI `gpt-image-2` | Current OpenAI image path, flexible sizes up to 4K-class outputs, high-fidelity edits | Native transparent backgrounds require an explicit `gpt-image-1.5` fallback; `gpt-image-2` transparent sprites can use local chroma-key cleanup |
+| `imagegen2` | OpenAI `gpt-image-2` | Current OpenAI image path, flexible sizes up to 4K-class outputs, high-fidelity edits | Transparent PNG sprites should use local chroma-key cleanup; true native alpha requires explicit `gpt-image-1.5` fallback |
 | [`nanogen`](https://github.com/zeveck/nanogen) | Google Gemini / Nano Banana image models | Rich style catalog, natural-language edits, multi-image composition, multi-turn refinement | No native alpha output; often returns JPEG and uses chromakey/post-processing for transparent-style assets |
 
 ## Requirements
@@ -193,26 +193,12 @@ The CLI treats transparent backgrounds as an explicit mode choice:
 
 - `reject`: fail fast when transparent output is requested. This is the
   default so callers do not accidentally receive opaque output.
-- `fallback-model`: request native alpha from `gpt-image-1.5`.
 - `chroma-key`: keep `gpt-image-2`, request an opaque solid-color key
   background, then remove that key color locally from PNG output.
+- `fallback-model`: request native alpha from `gpt-image-1.5`.
 
-For true native alpha output, explicitly opt into the fallback model:
-
-```bash
-node .codex/skills/imagegen2/generate.cjs \
-  --prompt "A clean pixel art health potion icon, standalone, no shadow, no text" \
-  --output "./assets/items/health-potion.png" \
-  --background transparent \
-  --transparent-mode fallback-model \
-  --quality low
-```
-
-This uses `gpt-image-1.5` for that request and records the fallback in CLI
-output/history. JPEG cannot be used for transparent output; use PNG or WebP.
-
-For sprite work where preserving `gpt-image-2` style quality is more important
-than native model alpha, use chroma-key PNG output:
+For sprite work, prefer chroma-key PNG output so the generation stays on
+`gpt-image-2`:
 
 ```bash
 node cli/generate.cjs \
@@ -231,6 +217,21 @@ as "solid flat chroma-key background", "no shadows", "no gradients", and "no
 background objects". Agents should disclose that this is local chroma-key
 cleanup rather than native model alpha.
 
+For true native alpha output, explicitly opt into the fallback model:
+
+```bash
+node .codex/skills/imagegen2/generate.cjs \
+  --prompt "A clean pixel art health potion icon, standalone, no shadow, no text" \
+  --output "./assets/items/health-potion.png" \
+  --background transparent \
+  --transparent-mode fallback-model \
+  --quality low
+```
+
+This uses `gpt-image-1.5` for that request and records the fallback in CLI
+output/history. Use it only when native model alpha is required or chroma-key
+cleanup is unsuitable. JPEG cannot be used for transparent output.
+
 ## Common Options
 
 ```text
@@ -239,7 +240,7 @@ cleanup rather than native model alpha.
 --size <auto|WxH>
 --quality <low|medium|high|auto>
 --background <auto|opaque|transparent>
---transparent-mode <reject|fallback-model|chroma-key>
+--transparent-mode <reject|chroma-key|fallback-model>
 --chroma-key <#rrggbb>            # chroma-key mode only, default #00ff00
 --chroma-tolerance <0-442>        # chroma-key RGB distance, default 24
 --output-compression <0-100>     # JPEG/WebP only

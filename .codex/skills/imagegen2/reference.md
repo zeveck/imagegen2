@@ -22,14 +22,15 @@ Limitations:
 - precise in-image text may still need retries
 - complex prompts can take up to about 2 minutes
 
-Use `--transparent-mode fallback-model` for true native alpha output. That path
-uses `gpt-image-1.5` explicitly and should be disclosed to the user.
-
 Use `--transparent-mode chroma-key` for PNG sprite workflows that should keep
 `gpt-image-2` generation quality. That path requests an opaque solid key-color
 background from `gpt-image-2`, then locally removes matching pixels. Disclose
 that the transparency comes from local chroma-key cleanup, not native model
 alpha.
+
+Use `--transparent-mode fallback-model` only when true native alpha output is
+required. That path uses `gpt-image-1.5` explicitly and should be disclosed to
+the user.
 
 Native `gpt-image-2` transparent-background behavior was probed on 2026-05-03.
 The API returned HTTP 400: "Transparent background is not supported for this
@@ -171,9 +172,10 @@ calculator. Avoid hardcoding stale price promises into user-facing output.
 
 - Prefer a blank or opaque background with `gpt-image-2` when alpha is not
   strictly required.
-- Use `--transparent-mode fallback-model` for actual alpha PNG/WebP output.
-- Use `--transparent-mode chroma-key` for PNG sprites when preserving
-  `gpt-image-2` style quality is more important than native alpha.
+- Prefer `--transparent-mode chroma-key` for transparent PNG sprites so the
+  generation stays on `gpt-image-2`.
+- Use `--transparent-mode fallback-model` only when actual native alpha
+  PNG/WebP output is required or chroma-key cleanup is unsuitable.
 - Avoid JPEG for transparency. Chroma-key mode currently targets PNG output.
 - Choose a key color absent from the subject, such as `#ff00ff` or `#00ff00`.
 - Ask for a "solid flat chroma-key background", with "no shadows", "no

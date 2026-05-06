@@ -176,6 +176,7 @@ test('--help documents gpt-image-2 and flexible options', () => {
   assert.ok(r.stdout.includes('--mask'));
   assert.ok(r.stdout.includes('--input-fidelity'));
   assert.ok(r.stdout.includes('transparent requires --transparent-mode'));
+  assert.ok(r.stdout.indexOf('--transparent-mode chroma-key') < r.stdout.indexOf('--transparent-mode fallback-model'));
 });
 
 test('no arguments exits non-zero with "--prompt is required."', () => {
@@ -273,6 +274,7 @@ test('--background transparent exits non-zero for gpt-image-2', () => {
   const r = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--background', 'transparent']);
   assert.notEqual(r.status, 0);
   assert.ok(r.stdout.includes('gpt-image-2 does not use native background'));
+  assert.ok(r.stdout.indexOf('--transparent-mode chroma-key') < r.stdout.indexOf('--transparent-mode fallback-model'));
 });
 
 test('--background transparent fallback-model dry-runs as gpt-image-1.5', () => {

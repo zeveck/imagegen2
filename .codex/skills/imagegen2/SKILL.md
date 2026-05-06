@@ -35,7 +35,7 @@ It writes machine-readable JSON to stdout and logs successful generations to
    preparing a batch.
 5. Run the CLI. For 3+ images, use `--quality low` unless the user asked for
    final quality.
-6. Report the saved path, model, size, quality, and any fallback mode used.
+6. Report the saved path, model, size, quality, and any transparency mode used.
 
 ## Common Commands
 
@@ -59,6 +59,18 @@ node /path/to/imagegen2-skill/generate.cjs \
   --quality low
 ```
 
+GPT Image 2 chroma-key transparency:
+
+```bash
+node /path/to/imagegen2-skill/generate.cjs \
+  --prompt "A clean pixel art health potion icon, standalone, no text, solid flat #ff00ff chroma-key background, no shadows, no gradients, no background objects" \
+  --output "./assets/items/health-potion.png" \
+  --background transparent \
+  --transparent-mode chroma-key \
+  --chroma-key '#ff00ff' \
+  --quality low
+```
+
 Native transparent fallback:
 
 ```bash
@@ -67,18 +79,6 @@ node /path/to/imagegen2-skill/generate.cjs \
   --output "./assets/items/health-potion.png" \
   --background transparent \
   --transparent-mode fallback-model \
-  --quality low
-```
-
-GPT Image 2 chroma-key transparency:
-
-```bash
-node /path/to/imagegen2-skill/generate.cjs \
-  --prompt "A clean pixel art health potion icon, standalone, no text" \
-  --output "./assets/items/health-potion.png" \
-  --background transparent \
-  --transparent-mode chroma-key \
-  --chroma-key '#ff00ff' \
   --quality low
 ```
 
@@ -92,7 +92,7 @@ node /path/to/imagegen2-skill/generate.cjs \
 | `--size` | `auto` or valid `WxH` | `1024x1024` | Edges <=3840, multiples of 16, ratio <=3:1 |
 | `--quality` | `low`, `medium`, `high`, `auto` | `low` | Use low for drafts, high for keepers |
 | `--background` | `auto`, `opaque`, `transparent` | `auto` | Transparent requires an explicit `--transparent-mode` |
-| `--transparent-mode` | `reject`, `fallback-model`, `chroma-key` | `reject` | `fallback-model` uses native alpha; `chroma-key` keeps `gpt-image-2` and performs local PNG cleanup |
+| `--transparent-mode` | `reject`, `chroma-key`, `fallback-model` | `reject` | `chroma-key` keeps `gpt-image-2` and performs local PNG cleanup; `fallback-model` uses native alpha |
 | `--chroma-key` | `#rrggbb` | `#00ff00` | Key color for chroma-key mode |
 | `--chroma-tolerance` | `0`-`442` | `24` | RGB distance tolerance for chroma-key cleanup |
 | `--output-compression` | `0`-`100` | none | JPEG/WebP only |
@@ -121,22 +121,24 @@ The CLI treats transparent output as an explicit mode choice:
 
 - `reject`: fail fast when transparent output is requested. This is the
   default.
-- `fallback-model`: use `gpt-image-1.5` for native alpha.
 - `chroma-key`: keep `gpt-image-2`, request an opaque solid key-color
   background, and locally remove matching PNG pixels.
+- `fallback-model`: use `gpt-image-1.5` for native alpha.
+
+Use `--transparent-mode chroma-key` for transparent PNG game sprites by
+default, so generation stays on `gpt-image-2`. Choose key colors absent from
+the subject, commonly `#ff00ff` or `#00ff00`. Add prompt constraints such as
+"solid flat chroma-key background", "no shadows", "no gradients", and "no
+background objects". Tell the user that transparency is local chroma-key
+cleanup rather than native model alpha.
 
 Use `--transparent-mode fallback-model` only when the user wants true native
-alpha output. This explicitly uses `gpt-image-1.5` for that request and records
-the fallback in CLI output and history. Tell the user when this happens.
+alpha output or chroma-key cleanup is unsuitable. This explicitly uses
+`gpt-image-1.5` for that request and records the fallback in CLI output and
+history. Tell the user when this happens.
 
-Do not use JPEG for transparent output. Use PNG or WebP.
-
-Use `--transparent-mode chroma-key` for game sprites when preserving
-`gpt-image-2` style quality is more important than native model alpha. Prefer
-PNG output and key colors absent from the subject, commonly `#ff00ff` or
-`#00ff00`. Add prompt constraints such as "solid flat chroma-key background",
-"no shadows", "no gradients", and "no background objects". Tell the user that
-transparency is local chroma-key cleanup rather than native model alpha.
+Do not use JPEG for transparent output. Chroma-key mode requires PNG output;
+fallback native alpha supports PNG or WebP.
 
 ## Prompt Guidance
 

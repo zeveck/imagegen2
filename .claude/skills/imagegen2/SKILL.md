@@ -27,7 +27,7 @@ node /path/to/imagegen2-skill/generate.cjs --prompt "..." --output "..." [option
    unless the user explicitly asked to replace it.
 3. Use `--dry-run` for unfamiliar option combinations or reference-image edits.
 4. Run the CLI and parse its JSON stdout.
-5. Report the saved path, model, size, quality, and any fallback mode.
+5. Report the saved path, model, size, quality, and any transparency mode.
 
 ## Important Differences from the old imagegen skill
 
@@ -36,9 +36,11 @@ node /path/to/imagegen2-skill/generate.cjs --prompt "..." --output "..." [option
 - `--input-fidelity` is not supported because `gpt-image-2` uses high-fidelity
   image inputs automatically.
 - Transparent output is explicit:
-  - `fallback-model` uses `gpt-image-1.5` for native alpha.
-  - `chroma-key` keeps `gpt-image-2`, requests an opaque solid key-color
-    background, and locally removes matching PNG pixels.
+  - prefer `chroma-key` for transparent PNG sprites; it keeps `gpt-image-2`,
+    requests an opaque solid key-color background, and locally removes matching
+    PNG pixels.
+  - use `fallback-model` only when native alpha is required; it uses
+    `gpt-image-1.5`.
   Disclose which path was used.
 
 ## Examples
@@ -61,20 +63,20 @@ node /path/to/imagegen2-skill/generate.cjs \
 
 ```bash
 node /path/to/imagegen2-skill/generate.cjs \
-  --prompt "A clean pixel art health potion icon, standalone, no shadow, no text" \
-  --output "./assets/items/health-potion.png" \
-  --background transparent \
-  --transparent-mode fallback-model \
-  --quality low
-```
-
-```bash
-node /path/to/imagegen2-skill/generate.cjs \
   --prompt "A cute 16-bit RPG kitten sprite, centered, no text, solid flat #ff00ff chroma-key background, no shadows, no gradients, no background objects" \
   --output "./assets/sprites/kitten.png" \
   --background transparent \
   --transparent-mode chroma-key \
   --chroma-key '#ff00ff' \
+  --quality low
+```
+
+```bash
+node /path/to/imagegen2-skill/generate.cjs \
+  --prompt "A clean pixel art health potion icon, standalone, no shadow, no text" \
+  --output "./assets/items/health-potion.png" \
+  --background transparent \
+  --transparent-mode fallback-model \
   --quality low
 ```
 

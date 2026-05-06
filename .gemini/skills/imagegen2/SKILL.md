@@ -21,16 +21,8 @@ Recommended workflow:
 4. Run `--dry-run` for validation when using reference images or unusual sizes.
 5. Run the CLI, parse JSON stdout, and report the saved path.
 
-Native transparent backgrounds require:
-
-```bash
---background transparent --transparent-mode fallback-model
-```
-
-This explicitly uses `gpt-image-1.5`.
-
-For PNG sprites where preserving `gpt-image-2` quality is more important than
-native model alpha, use local chroma-key cleanup:
+For transparent PNG sprites, prefer local chroma-key cleanup so generation
+stays on `gpt-image-2`:
 
 ```bash
 --background transparent --transparent-mode chroma-key --chroma-key '#ff00ff'
@@ -39,6 +31,15 @@ native model alpha, use local chroma-key cleanup:
 Prompt for a solid flat key background with no shadows, gradients, or
 background objects. Disclose that this transparency comes from local chroma-key
 cleanup rather than native model alpha.
+
+For true native alpha, use the explicit fallback:
+
+```bash
+--background transparent --transparent-mode fallback-model
+```
+
+This uses `gpt-image-1.5`; use it only when native alpha is required or
+chroma-key cleanup is unsuitable.
 
 Reference images use repeatable `--image <path>` flags. Verify each path before
 invoking the CLI.

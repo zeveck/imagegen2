@@ -64,10 +64,10 @@ Options:
   --quality <quality>     low | medium | high | auto (default: low)
   --background <bg>       transparent | opaque | auto (default: auto)
                           transparent requires --transparent-mode.
-  --transparent-mode <m>  reject | fallback-model | chroma-key (default: reject)
-                          fallback-model uses gpt-image-1.5 for native alpha;
+  --transparent-mode <m>  reject | chroma-key | fallback-model (default: reject)
                           chroma-key keeps gpt-image-2, requests an opaque
                           solid key background, then removes it locally.
+                          fallback-model uses gpt-image-1.5 for native alpha.
   --chroma-key <hex>      Chroma-key color for local removal (default: #00ff00)
   --chroma-tolerance <n>  Chroma-key RGB distance tolerance, 0-442 (default: 24)
   --output-compression <n> JPEG/WEBP compression, 0-100. Not valid for PNG.
@@ -94,8 +94,8 @@ Examples:
   node generate.cjs --prompt "A pixel art sword" --output "./sword.png"
   node generate.cjs --prompt "Forest scene" --output "./bg.png" --size 3840x2160 --quality high
   node generate.cjs --prompt "Icon on a plain background" --output "./icon.png" --background opaque
-  node generate.cjs --prompt "Game icon" --output "./icon.png" --background transparent --transparent-mode fallback-model
   node generate.cjs --prompt "Pixel sprite" --output "./sprite.png" --background transparent --transparent-mode chroma-key --chroma-key "#ff00ff"
+  node generate.cjs --prompt "Native-alpha icon" --output "./icon.png" --background transparent --transparent-mode fallback-model
   node generate.cjs --prompt "Make it blue" --output "./edit.png" --image "./orig.png"
   node generate.cjs --prompt "Match this style" --output "./new.png" --image "./ref1.png" --image "./ref2.png"
 `.trim());
@@ -227,7 +227,7 @@ function parseArgs(argv) {
 
 const VALID_QUALITIES = new Set(["low", "medium", "high", "auto"]);
 const VALID_BACKGROUNDS = new Set(["transparent", "opaque", "auto"]);
-const VALID_TRANSPARENT_MODES = new Set(["reject", "fallback-model", "chroma-key"]);
+const VALID_TRANSPARENT_MODES = new Set(["reject", "chroma-key", "fallback-model"]);
 const VALID_EXTENSIONS = { ".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".webp": "webp" };
 const VALID_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const MAX_IMAGES = 16;
@@ -314,7 +314,7 @@ function validate(args) {
       fail("JPEG does not support transparency. Use .png or .webp with --background transparent.");
     }
     if (args.transparentMode === "reject") {
-      fail('gpt-image-2 does not use native background "transparent" by default. Use --transparent-mode fallback-model for native alpha or --transparent-mode chroma-key for local PNG cleanup.');
+      fail('gpt-image-2 does not use native background "transparent" by default. Use --transparent-mode chroma-key for transparent PNG cleanup, or --transparent-mode fallback-model only when native alpha is required.');
     }
     if (args.transparentMode === "chroma-key") {
       if (ext !== ".png") {
