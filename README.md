@@ -211,11 +211,16 @@ node cli/generate.cjs \
 ```
 
 Chroma-key mode normalizes the API request to `background: "opaque"` and adds
-prompt guidance for a solid flat key background. Use key colors absent from the
-subject, commonly `#ff00ff` or `#00ff00`, and include prompt constraints such
-as "solid flat chroma-key background", "no shadows", "no gradients", and "no
-background objects". Agents should disclose that this is local chroma-key
-cleanup rather than native model alpha.
+prompt guidance for a solid flat key background. The local cleanup removes the
+key pixels and alpha-bleeds hidden RGB in fully transparent pixels from nearby
+visible pixels. It also can suppress strongly key-colored visible edge pixels
+when clean nearby subject colors are available. This conservative edge cleanup
+preserves alpha and silhouette; it is not full matting or global color
+decontamination. Use key colors absent from the subject, commonly `#ff00ff` or
+`#00ff00`, and include prompt constraints such as "solid flat chroma-key
+background", "no shadows", "no gradients", and "no background objects". Agents
+should disclose that this is local chroma-key cleanup rather than native model
+alpha.
 
 For true native alpha output, explicitly opt into the fallback model:
 

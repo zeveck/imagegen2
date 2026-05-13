@@ -129,7 +129,10 @@ Use `--transparent-mode chroma-key` for transparent PNG game sprites by
 default, so generation stays on `gpt-image-2`. Choose key colors absent from
 the subject, commonly `#ff00ff` or `#00ff00`. Add prompt constraints such as
 "solid flat chroma-key background", "no shadows", "no gradients", and "no
-background objects". Tell the user that transparency is local chroma-key
+background objects". Local cleanup removes matching key pixels, alpha-bleeds
+hidden RGB in fully transparent pixels from nearby visible pixels, and can
+suppress strongly key-colored visible edge pixels when clean nearby subject
+colors are available. Tell the user that transparency is local chroma-key
 cleanup rather than native model alpha.
 
 Use `--transparent-mode fallback-model` only when the user wants true native

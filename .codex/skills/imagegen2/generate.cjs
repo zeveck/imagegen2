@@ -606,6 +606,181 @@ function encodeRgbaPng({ width, height, rgba }) {
   ]);
 }
 
+function alphaBleedTransparentPixels(parsed) {
+  const { width, height, rgba } = parsed;
+  const pixelCount = width * height;
+  const nearest = new Int32Array(pixelCount);
+  nearest.fill(-1);
+  const queue = new Int32Array(pixelCount);
+  let head = 0;
+  let tail = 0;
+
+  for (let pixel = 0, offset = 0; pixel < pixelCount; pixel++, offset += 4) {
+    if (rgba[offset + 3] > 0) {
+      nearest[pixel] = pixel;
+      queue[tail++] = pixel;
+    }
+  }
+
+  if (tail === 0 || tail === pixelCount) return 0;
+
+  while (head < tail) {
+    const pixel = queue[head++];
+    const source = nearest[pixel];
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    if (x > 0) {
+      const next = pixel - 1;
+      if (nearest[next] === -1) {
+        nearest[next] = source;
+        queue[tail++] = next;
+      }
+    }
+    if (x + 1 < width) {
+      const next = pixel + 1;
+      if (nearest[next] === -1) {
+        nearest[next] = source;
+        queue[tail++] = next;
+      }
+    }
+    if (y > 0) {
+      const next = pixel - width;
+      if (nearest[next] === -1) {
+        nearest[next] = source;
+        queue[tail++] = next;
+      }
+    }
+    if (y + 1 < height) {
+      const next = pixel + width;
+      if (nearest[next] === -1) {
+        nearest[next] = source;
+        queue[tail++] = next;
+      }
+    }
+  }
+
+  let bledPixels = 0;
+  for (let pixel = 0, offset = 0; pixel < pixelCount; pixel++, offset += 4) {
+    if (rgba[offset + 3] !== 0) continue;
+    const source = nearest[pixel];
+    if (source < 0 || source === pixel) continue;
+    const sourceOffset = source * 4;
+    rgba[offset] = rgba[sourceOffset];
+    rgba[offset + 1] = rgba[sourceOffset + 1];
+    rgba[offset + 2] = rgba[sourceOffset + 2];
+    bledPixels++;
+  }
+  return bledPixels;
+}
+
+const CHROMA_SPILL_SEARCH_RADIUS = 2;
+
+function colorDistanceSq(r, g, b, key) {
+  const dr = r - key.r;
+  const dg = g - key.g;
+  const db = b - key.b;
+  return dr * dr + dg * dg + db * db;
+}
+
+function hasTransparentCardinalNeighbor(parsed, pixel) {
+  const { width, height, rgba } = parsed;
+  const x = pixel % width;
+  const y = Math.floor(pixel / width);
+  if (x > 0 && rgba[(pixel - 1) * 4 + 3] === 0) return true;
+  if (x + 1 < width && rgba[(pixel + 1) * 4 + 3] === 0) return true;
+  if (y > 0 && rgba[(pixel - width) * 4 + 3] === 0) return true;
+  if (y + 1 < height && rgba[(pixel + width) * 4 + 3] === 0) return true;
+  return false;
+}
+
+function isLikelyKeySpill(r, g, b, key, tolerance) {
+  const spillDistance = Math.max(96, tolerance + 72);
+  if (colorDistanceSq(r, g, b, key) > spillDistance * spillDistance) return false;
+
+  const channels = [
+    { pixel: r, key: key.r },
+    { pixel: g, key: key.g },
+    { pixel: b, key: key.b },
+  ];
+  let constrainedChannels = 0;
+  let matchingChannels = 0;
+  for (const channel of channels) {
+    if (channel.key >= 192) {
+      constrainedChannels++;
+      if (channel.pixel >= 176) matchingChannels++;
+    } else if (channel.key <= 63) {
+      constrainedChannels++;
+      if (channel.pixel <= 112) matchingChannels++;
+    }
+  }
+  if (constrainedChannels > 0 && matchingChannels !== constrainedChannels) return false;
+
+  return Math.max(r, g, b) - Math.min(r, g, b) >= 64;
+}
+
+function averageNearbyVisibleNonSpillColor(parsed, source, pixel, key, tolerance) {
+  const { width, height } = parsed;
+  const x = pixel % width;
+  const y = Math.floor(pixel / width);
+  let totalR = 0;
+  let totalG = 0;
+  let totalB = 0;
+  let count = 0;
+
+  for (let dy = -CHROMA_SPILL_SEARCH_RADIUS; dy <= CHROMA_SPILL_SEARCH_RADIUS; dy++) {
+    const yy = y + dy;
+    if (yy < 0 || yy >= height) continue;
+    for (let dx = -CHROMA_SPILL_SEARCH_RADIUS; dx <= CHROMA_SPILL_SEARCH_RADIUS; dx++) {
+      const xx = x + dx;
+      if (xx < 0 || xx >= width || (dx === 0 && dy === 0)) continue;
+      const offset = (yy * width + xx) * 4;
+      if (source[offset + 3] === 0) continue;
+      const nr = source[offset];
+      const ng = source[offset + 1];
+      const nb = source[offset + 2];
+      if (colorDistanceSq(nr, ng, nb, key) <= tolerance * tolerance) continue;
+      if (isLikelyKeySpill(nr, ng, nb, key, tolerance)) continue;
+      totalR += nr;
+      totalG += ng;
+      totalB += nb;
+      count++;
+    }
+  }
+
+  if (count === 0) return null;
+  return [
+    Math.round(totalR / count),
+    Math.round(totalG / count),
+    Math.round(totalB / count),
+  ];
+}
+
+function suppressKeySpillOnVisibleEdges(parsed, key, tolerance) {
+  const { width, height, rgba } = parsed;
+  const source = Buffer.from(rgba);
+  const replacements = [];
+
+  for (let pixel = 0, offset = 0; pixel < width * height; pixel++, offset += 4) {
+    if (source[offset + 3] === 0) continue;
+    if (!hasTransparentCardinalNeighbor(parsed, pixel)) continue;
+    const r = source[offset];
+    const g = source[offset + 1];
+    const b = source[offset + 2];
+    if (!isLikelyKeySpill(r, g, b, key, tolerance)) continue;
+    const replacement = averageNearbyVisibleNonSpillColor(parsed, source, pixel, key, tolerance);
+    if (!replacement) continue;
+    replacements.push({ offset, replacement });
+  }
+
+  for (const { offset, replacement } of replacements) {
+    rgba[offset] = replacement[0];
+    rgba[offset + 1] = replacement[1];
+    rgba[offset + 2] = replacement[2];
+  }
+
+  return replacements.length;
+}
+
 function chromaKeyPng(buffer, { chromaKey, tolerance }) {
   const key = parseHexColor(chromaKey);
   const parsed = parsePng(buffer);
@@ -629,6 +804,8 @@ function chromaKeyPng(buffer, { chromaKey, tolerance }) {
       tolerance,
     });
   }
+  const alphaBleedPixels = alphaBleedTransparentPixels(parsed);
+  const spillSuppressedPixels = suppressKeySpillOnVisibleEdges(parsed, key, tolerance);
   return {
     buffer: encodeRgbaPng(parsed),
     stats: {
@@ -636,6 +813,8 @@ function chromaKeyPng(buffer, { chromaKey, tolerance }) {
       tolerance,
       removedPixels,
       retainedVisiblePixels: opaquePixels,
+      alphaBleedPixels,
+      spillSuppressedPixels,
       width: parsed.width,
       height: parsed.height,
     },
@@ -1070,6 +1249,8 @@ if (require.main === module) {
     Imagegen2Error,
     parsePng,
     encodeRgbaPng,
+    alphaBleedTransparentPixels,
+    suppressKeySpillOnVisibleEdges,
     chromaKeyPng,
   };
 }

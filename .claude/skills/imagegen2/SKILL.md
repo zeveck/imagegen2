@@ -38,7 +38,9 @@ node /path/to/imagegen2-skill/generate.cjs --prompt "..." --output "..." [option
 - Transparent output is explicit:
   - prefer `chroma-key` for transparent PNG sprites; it keeps `gpt-image-2`,
     requests an opaque solid key-color background, and locally removes matching
-    PNG pixels.
+    PNG pixels, alpha-bleeds hidden RGB in fully transparent pixels from
+    nearby visible pixels, and can suppress strongly key-colored visible edge
+    pixels when clean nearby subject colors are available.
   - use `fallback-model` only when native alpha is required; it uses
     `gpt-image-1.5`.
   Disclose which path was used.

@@ -18,7 +18,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.resolve(__dirname, '../cli/generate.cjs');
 const REFERENCE = path.resolve(__dirname, '../cli/reference.md');
 const require = createRequire(import.meta.url);
-const { Imagegen2Error, encodeRgbaPng, parsePng, chromaKeyPng } = require(SCRIPT);
+const {
+  Imagegen2Error,
+  encodeRgbaPng,
+  parsePng,
+  alphaBleedTransparentPixels,
+  suppressKeySpillOnVisibleEdges,
+  chromaKeyPng,
+} = require(SCRIPT);
 
 const TEMP_DIR = mkdtempSync(path.join(tmpdir(), 'imagegen2-test-'));
 const TEMP_PNG = path.join(TEMP_DIR, 'test.png');
@@ -517,11 +524,102 @@ test('chromaKeyPng removes exact key pixels and writes RGBA PNG', () => {
   const result = chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 0 });
   assert.equal(result.stats.removedPixels, 2);
   assert.equal(result.stats.retainedVisiblePixels, 2);
+  assert.equal(result.stats.alphaBleedPixels, 2);
+  assert.equal(result.stats.spillSuppressedPixels, 0);
   const parsed = parsePng(result.buffer);
   assert.equal(parsed.rgba[3], 0);
   assert.equal(parsed.rgba[7], 255);
   assert.equal(parsed.rgba[11], 0);
   assert.equal(parsed.rgba[15], 255);
+  assert.deepEqual([...parsed.rgba.subarray(0, 3)], [10, 20, 30]);
+  assert.deepEqual([...parsed.rgba.subarray(8, 11)], [40, 50, 60]);
+});
+
+test('suppressKeySpillOnVisibleEdges recolors cyan spill without changing alpha', () => {
+  const parsed = {
+    width: 5,
+    height: 1,
+    rgba: rgbaBuffer([
+      [0, 255, 255, 0],
+      [18, 238, 240, 128],
+      [180, 90, 80, 255],
+      [190, 100, 90, 255],
+      [200, 110, 100, 255],
+    ]),
+  };
+  const beforeVisible = [...parsed.rgba].filter((_, i) => i % 4 === 3 && parsed.rgba[i] > 0).length;
+  const count = suppressKeySpillOnVisibleEdges(parsed, { hex: '#00ffff', r: 0, g: 255, b: 255 }, 24);
+  const afterVisible = [...parsed.rgba].filter((_, i) => i % 4 === 3 && parsed.rgba[i] > 0).length;
+  assert.equal(count, 1);
+  assert.deepEqual([...parsed.rgba.subarray(4, 8)], [185, 95, 85, 128]);
+  assert.equal(beforeVisible, afterVisible);
+});
+
+test('suppressKeySpillOnVisibleEdges handles magenta and green key spill', () => {
+  const magenta = {
+    width: 3,
+    height: 1,
+    rgba: rgbaBuffer([
+      [255, 0, 255, 0],
+      [238, 24, 240, 255],
+      [120, 90, 60, 255],
+    ]),
+  };
+  assert.equal(suppressKeySpillOnVisibleEdges(magenta, { hex: '#ff00ff', r: 255, g: 0, b: 255 }, 24), 1);
+  assert.deepEqual([...magenta.rgba.subarray(4, 8)], [120, 90, 60, 255]);
+
+  const green = {
+    width: 3,
+    height: 1,
+    rgba: rgbaBuffer([
+      [0, 255, 0, 0],
+      [20, 238, 18, 255],
+      [90, 70, 150, 255],
+    ]),
+  };
+  assert.equal(suppressKeySpillOnVisibleEdges(green, { hex: '#00ff00', r: 0, g: 255, b: 0 }, 24), 1);
+  assert.deepEqual([...green.rgba.subarray(4, 8)], [90, 70, 150, 255]);
+});
+
+test('suppressKeySpillOnVisibleEdges ignores interior and diagonal-only spill pixels', () => {
+  const interior = {
+    width: 3,
+    height: 1,
+    rgba: rgbaBuffer([
+      [80, 50, 40, 255],
+      [16, 238, 240, 255],
+      [120, 80, 70, 255],
+    ]),
+  };
+  assert.equal(suppressKeySpillOnVisibleEdges(interior, { hex: '#00ffff', r: 0, g: 255, b: 255 }, 24), 0);
+  assert.deepEqual([...interior.rgba.subarray(4, 8)], [16, 238, 240, 255]);
+
+  const diagonal = {
+    width: 2,
+    height: 2,
+    rgba: rgbaBuffer([
+      [0, 255, 255, 0],
+      [100, 80, 70, 255],
+      [110, 90, 80, 255],
+      [16, 238, 240, 255],
+    ]),
+  };
+  assert.equal(suppressKeySpillOnVisibleEdges(diagonal, { hex: '#00ffff', r: 0, g: 255, b: 255 }, 24), 0);
+  assert.deepEqual([...diagonal.rgba.subarray(12, 16)], [16, 238, 240, 255]);
+});
+
+test('suppressKeySpillOnVisibleEdges leaves spill unchanged when no clean replacement exists', () => {
+  const parsed = {
+    width: 3,
+    height: 1,
+    rgba: rgbaBuffer([
+      [0, 255, 255, 0],
+      [16, 238, 240, 255],
+      [20, 240, 238, 255],
+    ]),
+  };
+  assert.equal(suppressKeySpillOnVisibleEdges(parsed, { hex: '#00ffff', r: 0, g: 255, b: 255 }, 24), 0);
+  assert.deepEqual([...parsed.rgba.subarray(4, 8)], [16, 238, 240, 255]);
 });
 
 test('chromaKeyPng preserves existing non-key alpha', () => {
@@ -550,6 +648,24 @@ test('chromaKeyPng uses tolerance for near-key pixels', () => {
   const parsed = parsePng(chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 8 }).buffer);
   assert.equal(parsed.rgba[3], 0);
   assert.equal(parsed.rgba[7], 255);
+});
+
+test('alphaBleedTransparentPixels fills transparent RGB from nearest visible pixels', () => {
+  const parsed = {
+    width: 3,
+    height: 1,
+    rgba: rgbaBuffer([
+      [255, 0, 255, 0],
+      [12, 34, 56, 255],
+      [255, 0, 255, 0],
+    ]),
+  };
+  assert.equal(alphaBleedTransparentPixels(parsed), 2);
+  assert.deepEqual([...parsed.rgba], [
+    12, 34, 56, 0,
+    12, 34, 56, 255,
+    12, 34, 56, 0,
+  ]);
 });
 
 test('parsePng decodes PNG filter types 1-4', () => {
@@ -596,11 +712,13 @@ test('chromaKeyPng supports 8-bit RGB PNG input', () => {
   const result = chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 8 });
   assert.equal(result.stats.removedPixels, 2);
   assert.equal(result.stats.retainedVisiblePixels, 1);
+  assert.equal(result.stats.alphaBleedPixels, 2);
+  assert.equal(result.stats.spillSuppressedPixels, 0);
   const parsed = parsePng(result.buffer);
   assert.deepEqual([...parsed.rgba], [
-    255, 0, 255, 0,
+    10, 20, 30, 0,
     10, 20, 30, 255,
-    250, 0, 250, 0,
+    10, 20, 30, 0,
   ]);
 });
 
@@ -715,6 +833,8 @@ test('mocked chroma-key success writes stdout and history postprocess metadata',
     tolerance: 24,
     removedPixels: 1,
     retainedVisiblePixels: 1,
+    alphaBleedPixels: 1,
+    spillSuppressedPixels: 0,
     width: 2,
     height: 1,
   });

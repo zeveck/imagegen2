@@ -29,8 +29,11 @@ stays on `gpt-image-2`:
 ```
 
 Prompt for a solid flat key background with no shadows, gradients, or
-background objects. Disclose that this transparency comes from local chroma-key
-cleanup rather than native model alpha.
+background objects. Local cleanup removes matching key pixels, alpha-bleeds
+hidden RGB in fully transparent pixels from nearby visible pixels, and can
+suppress strongly key-colored visible edge pixels when clean nearby subject
+colors are available. Disclose that this transparency comes from local
+chroma-key cleanup rather than native model alpha.
 
 For true native alpha, use the explicit fallback:
 
