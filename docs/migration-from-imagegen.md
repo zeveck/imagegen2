@@ -1,19 +1,19 @@
 # Migrating from zeveck/imagegen to imagegen2
 
 `imagegen2` is based on `github.com/zeveck/imagegen`, but targets OpenAI
-`gpt-image-2` and ships installable skill folders for Codex, Claude Code, and
-Gemini.
+GPT Image 2.5 (`gpt-image-2.5-flare` by default) and ships installable skill
+folders for Codex, Claude Code, and Gemini.
 
 ## Main Changes
 
 | Old `imagegen` | New `imagegen2` |
 |----------------|-----------------|
 | `.claude/skills/imagegen/generate.cjs` | `cli/generate.cjs` for repo development, or the bundled `generate.cjs` in the installed `imagegen2` skill folder |
-| default model `gpt-image-1` | default model `gpt-image-2` |
+| default model `gpt-image-1` | default model `gpt-image-2.5-flare-2026-09-08` |
 | `.imagegen-history.jsonl` | `.imagegen2-history.jsonl` |
-| fixed legacy sizes | flexible `gpt-image-2` sizes |
-| `--input-fidelity high|low` | unsupported; `gpt-image-2` uses high fidelity automatically |
-| `--background transparent` directly | requires an explicit `--transparent-mode`: `chroma-key` for `gpt-image-2` PNG cleanup or `fallback-model` for native alpha |
+| fixed legacy sizes | flexible GPT Image 2.x sizes |
+| `--input-fidelity high|low` | unsupported; GPT Image 2.x uses high fidelity automatically |
+| `--background transparent` directly | still works directly, with native alpha from GPT Image 2.5; `--transparent-mode chroma-key` is available for local key-color cleanup |
 
 ## Command Examples
 
@@ -42,7 +42,17 @@ node .claude/skills/imagegen/generate.cjs \
   --background transparent
 ```
 
-New `gpt-image-2` chroma-key transparent output:
+New transparent output is the same command, now using GPT Image 2.5 native
+alpha:
+
+```bash
+node cli/generate.cjs \
+  --prompt "A game icon, isolated on a transparent background, no shadows" \
+  --output "./assets/ui/icon.png" \
+  --background transparent
+```
+
+Local chroma-key cleanup, for hard binary alpha:
 
 ```bash
 node cli/generate.cjs \
@@ -53,20 +63,7 @@ node cli/generate.cjs \
   --chroma-key '#ff00ff'
 ```
 
-New native-alpha transparent output:
-
-```bash
-node cli/generate.cjs \
-  --prompt "A game icon" \
-  --output "./assets/ui/icon.png" \
-  --background transparent \
-  --transparent-mode fallback-model
-```
-
-Prefer `chroma-key` when you want to keep the `gpt-image-2` generation path and
-accept local solid-color background removal. Use `fallback-model` only when
-native model alpha matters. Chroma-key mode is PNG-only in the initial
-implementation.
+Chroma-key mode is PNG-only.
 
 Old reference edit:
 
@@ -98,3 +95,21 @@ node cli/generate.cjs \
   --output "./assets/items/sword.png" \
   --size 2048x1152
 ```
+
+## Upgrading from imagegen2 0.1 (gpt-image-2)
+
+imagegen2 0.2 switches the default model from `gpt-image-2` to
+`gpt-image-2.5-flare-2026-09-08`. Existing commands keep working:
+
+| imagegen2 0.1 | imagegen2 0.2 |
+|---------------|---------------|
+| default model `gpt-image-2` | default model `gpt-image-2.5-flare-2026-09-08`; pass `--model gpt-image-2` to keep matching older assets |
+| `--background transparent` alone failed (`--transparent-mode reject` default) | uses native alpha (`--transparent-mode auto` default); `reject` is still accepted |
+| `--transparent-mode chroma-key` always used `gpt-image-2` | uses `--model` (default Flare); detects a drifted key color on the image border and fails if most of the border stays opaque |
+| `--quality low|medium|high|auto` | adds `xhigh` and `max` on GPT Image 2.5 models |
+| fixed 120s request timeout, retried on timeout | `--timeout` (default 300s, 600s for `xhigh`/`max`), not retried on timeout |
+| output JSON without token usage | output JSON and history include `usage` |
+
+Projects mid-way through a consistent asset set (for example an animation made
+with `gpt-image-2`) should pass `--model gpt-image-2` until that set is done,
+so new frames match the old ones.

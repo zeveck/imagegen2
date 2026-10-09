@@ -5,37 +5,33 @@ Supplementary style presets, prompt templates, and practical guidance for the
 
 ## Model Notes
 
-`imagegen2` defaults to OpenAI `gpt-image-2`.
+`imagegen2` defaults to OpenAI GPT Image 2.5 Flare, pinned to the snapshot
+`gpt-image-2.5-flare-2026-09-08` so output style does not shift when OpenAI
+updates the alias.
+
+| Model | Use it for | Notes |
+|---|---|---|
+| `gpt-image-2.5-flare` (default) | Almost everything | Fast (~10-15s at medium), native transparency |
+| `gpt-image-2.5-sunburst` | Detailed final art | Same token price as Flare, ~1.6x slower |
+| `gpt-image-2` | Matching assets made before the upgrade | No native transparency; no `xhigh`/`max`; ~3x slower and ~4x the cost of Flare at medium |
+| `gpt-image-1.5` | Legacy native-alpha fallback | Used by `--transparent-mode fallback-model` |
 
 Strengths:
 
 - high-quality image generation and editing
 - flexible image sizes up to 4K-class outputs
 - high-fidelity image inputs by default
-- stronger text rendering and instruction following than older image models
+- native transparent backgrounds with soft, fringe-free edges on fire, smoke,
+  fur, and glow
+- good character consistency across reference-image edits
 
 Limitations:
 
-- `gpt-image-2` does not currently support native transparent backgrounds
 - exact layout and composition are not deterministic
-- recurring character and brand consistency can drift across generations
+- recurring character and brand consistency can still drift across many edits
 - precise in-image text may still need retries
-- complex prompts can take up to about 2 minutes
-
-Use `--transparent-mode chroma-key` for PNG sprite workflows that should keep
-`gpt-image-2` generation quality. That path requests an opaque solid key-color
-background from `gpt-image-2`, locally removes matching pixels, alpha-bleeds
-transparent RGB, and can suppress strongly key-colored visible edge pixels
-when clean nearby subject colors are available. Disclose that the transparency
-comes from local chroma-key cleanup, not native model alpha.
-
-Use `--transparent-mode fallback-model` only when true native alpha output is
-required. That path uses `gpt-image-1.5` explicitly and should be disclosed to
-the user.
-
-Native `gpt-image-2` transparent-background behavior was probed on 2026-05-03.
-The API returned HTTP 400: "Transparent background is not supported for this
-model."
+- `xhigh`/`max` quality is slow; Sunburst at `max` can take several minutes
+  (the CLI allows 600s for those levels; raise `--timeout` if needed)
 
 ## Style Presets
 
@@ -155,6 +151,9 @@ Use larger sizes intentionally. They cost more and may take longer.
 - `low`: exploration, batches, first drafts
 - `medium`: good single assets and selected variants
 - `high`: final/keeper images, hero art, detailed backgrounds
+- `xhigh`, `max`: GPT Image 2.5 only. Extra detail for hero art; Flare
+  `max` costs about as much as `gpt-image-2` at `high` and is much slower
+  than Flare `high`
 - `auto`: when the prompt itself should drive the tradeoff
 
 For exact current costs, use the OpenAI pricing page or image generation
@@ -165,24 +164,37 @@ calculator. Avoid hardcoding stale price promises into user-facing output.
 - Use one strong reference image when preserving style matters.
 - Use multiple references for a set of related icons or tiles.
 - Put the most important subject/style reference first.
-- `gpt-image-2` automatically uses high-fidelity image inputs; do not use
-  `--input-fidelity`.
+- GPT Image 2.x models automatically use high-fidelity image inputs; do not
+  use `--input-fidelity` (the API rejects it).
 - For iterative refinement, feed the prior output back with `--image`.
 
 ## Transparency Tips
 
-- Prefer a blank or opaque background with `gpt-image-2` when alpha is not
-  strictly required.
-- Prefer `--transparent-mode chroma-key` for transparent PNG sprites so the
-  generation stays on `gpt-image-2`.
-- Use `--transparent-mode fallback-model` only when actual native alpha
-  PNG/WebP output is required or chroma-key cleanup is unsuitable.
-- Avoid JPEG for transparency. Chroma-key mode currently targets PNG output.
-- Choose a key color absent from the subject, such as `#ff00ff` or `#00ff00`.
-- Ask for a "solid flat chroma-key background", with "no shadows", "no
-  gradients", and "no background objects".
-- Chroma-key cleanup removes matching key pixels, alpha-bleeds hidden RGB in
-  fully transparent pixels from nearby visible pixels, and can suppress
-  strongly key-colored visible edge pixels without changing alpha.
-- Keep `--chroma-tolerance` conservative. The default is `24`; valid values are
+- `--background transparent` uses the model's own alpha channel on GPT Image
+  2.5 (`--transparent-mode auto`, the default). This is the best choice for
+  most sprites, icons, and effects, and the only good choice for fire, smoke,
+  glow, fur, and other soft edges, which chroma-key cannot cut cleanly.
+- Ask for the subject "isolated on a transparent background, no shadows, no
+  ground".
+- Native-alpha PNGs are cleaned up locally by default: alpha >= 240 snaps to
+  255 (the model leaves solid subjects at ~252), alpha <= 2 snaps to 0, and
+  fully transparent pixels take nearby edge colors so resizing doesn't pull in
+  the hidden backdrop. Pass `--no-alpha-cleanup` to keep raw model alpha.
+  WebP output is not cleaned up.
+- `--transparent-mode chroma-key` is still available for pipelines that want
+  hard binary alpha or already depend on it. It requests an opaque solid
+  key-color background from `--model`, removes matching pixels locally,
+  alpha-bleeds hidden RGB, and suppresses strongly key-colored edge pixels. If
+  the image border is dominated by a color within 96 RGB units of the requested
+  key (models often paint `#ff00ff` as roughly `#ee04e4`), cleanup keys on that
+  detected color and reports it as `postprocess.detectedKey`. Cleanup fails if
+  most of the image border stays opaque. Chroma-key mode targets PNG output.
+- For chroma-key, choose a key color absent from the subject, such as `#ff00ff`
+  or `#00ff00`, and ask for a "solid flat chroma-key background", with "no
+  shadows", "no gradients", and "no background objects". Keep
+  `--chroma-tolerance` conservative. The default is `24`; valid values are
   `0` through `442`.
+- `gpt-image-2` has no native transparency; with that model use chroma-key.
+- `--transparent-mode fallback-model` (native alpha via `gpt-image-1.5`) is
+  kept for compatibility; GPT Image 2.5 native alpha is better.
+- Avoid JPEG for transparency.

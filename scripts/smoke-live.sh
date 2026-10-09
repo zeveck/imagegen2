@@ -38,11 +38,18 @@ node cli/generate.cjs \
   --quality low \
   --size 1024x1024
 
-node - "$OUT_DIR/red-circle-transparent.png" <<'NODE'
+node cli/generate.cjs \
+  --prompt "A simple red circle, centered, no text, isolated on a transparent background, no shadows" \
+  --output "$OUT_DIR/red-circle-native.png" \
+  --background transparent \
+  --quality low \
+  --size 1024x1024
+
+node - "$OUT_DIR/red-circle-transparent.png" "$OUT_DIR/red-circle-native.png" <<'NODE'
 const fs = require("fs");
 const { parsePng } = require("./cli/generate.cjs");
 
-const file = process.argv[2];
+for (const file of process.argv.slice(2)) {
 const image = parsePng(fs.readFileSync(file));
 let transparent = 0;
 let visible = 0;
@@ -52,13 +59,14 @@ for (let i = 0; i < image.rgba.length; i += 4) {
   if (image.rgba[i + 3] === 255) visible++;
 }
 if (transparent === 0) {
-  throw new Error(`${file} has no transparent pixels after chroma-key cleanup`);
+  throw new Error(`${file} has no transparent pixels after transparency cleanup`);
 }
 if (visible === 0) {
-  throw new Error(`${file} has no fully visible pixels after chroma-key cleanup`);
+  throw new Error(`${file} has no fully visible pixels after transparency cleanup`);
 }
 if (transparent / total < 0.25) {
-  throw new Error(`${file} only has ${transparent}/${total} transparent pixels after chroma-key cleanup`);
+  throw new Error(`${file} only has ${transparent}/${total} transparent pixels after transparency cleanup`);
 }
 console.log(`Verified alpha in ${file}: ${transparent} transparent pixels, ${visible} visible pixels`);
+}
 NODE

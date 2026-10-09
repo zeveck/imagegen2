@@ -1,9 +1,9 @@
 # imagegen2
 
 Generate and edit game-oriented image assets from Codex, Claude Code, Gemini,
-or a terminal using OpenAI `gpt-image-2`.
+or a terminal using OpenAI GPT Image 2.5.
 
-`imagegen2` is based on `github.com/zeveck/imagegen`, updated for GPT Image 2
+`imagegen2` is based on `github.com/zeveck/imagegen`, updated for GPT Image 2.x
 and packaged as self-contained Agent Skills for multiple coding agents. Use it
 for sprites, tiles, item icons, UI elements, portraits, backgrounds, concept
 art, and reference-image variants.
@@ -17,7 +17,7 @@ identical.
 | Skill | Back end | Good fit | Tradeoffs |
 |-------|----------|----------|-----------|
 | [`imagegen`](https://github.com/zeveck/imagegen) | OpenAI `gpt-image-1` | Classic game assets, direct transparent PNG/WebP sprites and icons | Older OpenAI image model, legacy size set |
-| `imagegen2` | OpenAI `gpt-image-2` | Current OpenAI image path, flexible sizes up to 4K-class outputs, high-fidelity edits | Transparent PNG sprites should use local chroma-key cleanup; true native alpha requires explicit `gpt-image-1.5` fallback |
+| `imagegen2` | OpenAI GPT Image 2.5 (`gpt-image-2.5-flare` default) | Current OpenAI image path, flexible sizes up to 4K-class outputs, high-fidelity edits, native transparency with soft edges | `xhigh`/`max` quality is slow |
 | [`nanogen`](https://github.com/zeveck/nanogen) | Google Gemini / Nano Banana image models | Rich style catalog, natural-language edits, multi-image composition, multi-turn refinement | No native alpha output; often returns JPEG and uses chromakey/post-processing for transparent-style assets |
 
 ## Requirements
@@ -163,9 +163,21 @@ node cli/generate.cjs \
 Use `--mask` with a PNG alpha mask for regional edits. The API requires the mask
 to match the input image's format and size and to include an alpha channel.
 
+## Models
+
+| Model | Use it for |
+|-------|------------|
+| `gpt-image-2.5-flare` (default, pinned to `gpt-image-2.5-flare-2026-09-08`) | Almost everything: fast, native transparency, `xhigh`/`max` quality |
+| `gpt-image-2.5-sunburst` | Slower, more detailed final art at the same token price |
+| `gpt-image-2` | Matching assets made before the 2.5 upgrade (no native transparency) |
+
+In a 2026-10-09 comparison at `medium` quality, Flare was about 3x faster and
+4x cheaper per image than `gpt-image-2`, and held character identity across
+reference-image edits at least as well.
+
 ## Sizes
 
-`gpt-image-2` accepts `auto` or flexible `WxH` sizes when they satisfy the
+GPT Image 2.x models accept `auto` or flexible `WxH` sizes when they satisfy the
 documented constraints:
 
 - each edge is `<= 3840`
@@ -189,16 +201,34 @@ OpenAI docs. Use 4K sizes intentionally.
 
 ## Transparent Backgrounds
 
-The CLI treats transparent backgrounds as an explicit mode choice:
+`--background transparent` uses the model's native alpha channel on GPT Image
+2.5. No other flag is needed:
 
-- `reject`: fail fast when transparent output is requested. This is the
-  default so callers do not accidentally receive opaque output.
-- `chroma-key`: keep `gpt-image-2`, request an opaque solid-color key
-  background, then remove that key color locally from PNG output.
-- `fallback-model`: request native alpha from `gpt-image-1.5`.
+```bash
+node cli/generate.cjs \
+  --prompt "A red dragon breathing fire, 16-bit RPG sprite, isolated on a transparent background, no shadows, no ground" \
+  --output "./assets/dragon.png" \
+  --background transparent \
+  --quality medium
+```
 
-For sprite work, prefer chroma-key PNG output so the generation stays on
-`gpt-image-2`:
+Native alpha handles soft edges such as fire, smoke, glow, and fur cleanly. The
+CLI applies a light local cleanup to native-alpha PNGs: alpha >= 240 snaps to
+255 (the model leaves solid subjects at about 252), alpha <= 2 snaps to 0, and
+fully transparent pixels take nearby edge colors so resizing doesn't pull in
+the hidden backdrop. Pass `--no-alpha-cleanup` to keep raw model alpha.
+
+`--transparent-mode` picks how transparency is produced:
+
+- `auto` (default): native alpha when the model supports it, otherwise an
+  error naming the alternatives.
+- `native-alpha`: require the model's own alpha channel.
+- `chroma-key`: request an opaque solid key-color background from `--model`,
+  then remove that key color locally from PNG output. Produces hard binary
+  alpha. Use it for pipelines built around it, or with `gpt-image-2`, which has
+  no native alpha.
+- `fallback-model`: legacy native alpha via `gpt-image-1.5`.
+- `reject`: refuse transparent output.
 
 ```bash
 node cli/generate.cjs \
@@ -211,31 +241,20 @@ node cli/generate.cjs \
 ```
 
 Chroma-key mode normalizes the API request to `background: "opaque"` and adds
-prompt guidance for a solid flat key background. The local cleanup removes the
-key pixels and alpha-bleeds hidden RGB in fully transparent pixels from nearby
-visible pixels. It also can suppress strongly key-colored visible edge pixels
-when clean nearby subject colors are available. This conservative edge cleanup
-preserves alpha and silhouette; it is not full matting or global color
-decontamination. Use key colors absent from the subject, commonly `#ff00ff` or
-`#00ff00`, and include prompt constraints such as "solid flat chroma-key
-background", "no shadows", "no gradients", and "no background objects". Agents
-should disclose that this is local chroma-key cleanup rather than native model
-alpha.
+prompt guidance for a solid flat key background. Models often paint the key a
+little off (for example `#ee04e4` for `#ff00ff`), so when the image border is
+dominated by a color near the requested key, cleanup keys on that detected
+color and reports it as `postprocess.detectedKey`. Cleanup fails rather than
+writing a mostly opaque image if most of the border stays opaque. The local
+cleanup alpha-bleeds hidden RGB in fully transparent pixels from nearby visible
+pixels and can suppress strongly key-colored visible edge pixels when clean
+nearby subject colors are available. This conservative edge cleanup preserves
+alpha and silhouette; it is not full matting or global color decontamination,
+so glow and smoke keep a key-colored fringe. Use key colors absent from the
+subject, commonly `#ff00ff` or `#00ff00`. Agents should disclose that this is
+local chroma-key cleanup rather than native model alpha.
 
-For true native alpha output, explicitly opt into the fallback model:
-
-```bash
-node .codex/skills/imagegen2/generate.cjs \
-  --prompt "A clean pixel art health potion icon, standalone, no shadow, no text" \
-  --output "./assets/items/health-potion.png" \
-  --background transparent \
-  --transparent-mode fallback-model \
-  --quality low
-```
-
-This uses `gpt-image-1.5` for that request and records the fallback in CLI
-output/history. Use it only when native model alpha is required or chroma-key
-cleanup is unsuitable. JPEG cannot be used for transparent output.
+JPEG cannot be used for transparent output.
 
 ## Common Options
 
@@ -243,28 +262,31 @@ cleanup is unsuitable. JPEG cannot be used for transparent output.
 --prompt <string>
 --output <path>
 --size <auto|WxH>
---quality <low|medium|high|auto>
+--quality <low|medium|high|xhigh|max|auto>   # xhigh/max: GPT Image 2.5 only
 --background <auto|opaque|transparent>
---transparent-mode <reject|chroma-key|fallback-model>
+--transparent-mode <auto|native-alpha|chroma-key|fallback-model|reject>
+--no-alpha-cleanup               # keep raw native alpha
 --chroma-key <#rrggbb>            # chroma-key mode only, default #00ff00
 --chroma-tolerance <0-442>        # chroma-key RGB distance, default 24
 --output-compression <0-100>     # JPEG/WebP only
 --image <path>                   # repeatable, max 16
 --mask <png-path>
+--model <id>                     # default gpt-image-2.5-flare-2026-09-08
+--timeout <seconds>              # default 300, 600 for xhigh/max
 --client-request-id <id>
 --dry-run
 ```
 
 Run `node cli/generate.cjs --help` for the complete option list, including
-history controls and `--model`.
+history controls.
 
-`--input-fidelity` is intentionally unsupported with `gpt-image-2`; image inputs
-are processed at high fidelity automatically.
+`--input-fidelity` is intentionally unsupported: GPT Image 2.x models reject it,
+and image inputs are processed at high fidelity automatically.
 
 ## History
 
 Successful calls append to `.imagegen2-history.jsonl` with prompt, output path,
-parameters, request IDs, and any reference images.
+parameters, request IDs, token usage, and any reference images.
 
 ## Tests
 
@@ -288,12 +310,16 @@ IMAGEGEN2_LIVE_TEST=1 npm run test:all
 
 ## Docs Checked
 
-Model, size, transparency, and input-fidelity behavior are based on the current
+Model, size, quality, transparency, and input-fidelity behavior are based on the
+current
 [OpenAI Image generation guide](https://developers.openai.com/api/docs/guides/image-generation)
-and [GPT Image 2 model page](https://developers.openai.com/api/docs/models/gpt-image-2).
+and the
+[GPT-Image-2.5 Flare](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare)
+and
+[GPT-Image-2.5 Sunburst](https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst)
+model pages.
 
-Native `gpt-image-2` transparent-background behavior was probed on
-2026-05-03 with `background: "transparent"` and `output_format: "png"`. The
-API returned HTTP 400: "Transparent background is not supported for this
-model." Use `--transparent-mode chroma-key` to keep `gpt-image-2`, or
-`--transparent-mode fallback-model` for native alpha through `gpt-image-1.5`.
+Live probes on 2026-10-09 confirmed that both GPT Image 2.5 models return real
+alpha for `background: "transparent"` and reject `input_fidelity` with HTTP 400.
+`gpt-image-2` returned HTTP 400 for native transparency when probed on
+2026-05-03.

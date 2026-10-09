@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-// generate.cjs - Thin OpenAI gpt-image-2 API wrapper for imagegen2.
+// generate.cjs - Thin OpenAI GPT Image API wrapper for imagegen2.
 // Zero external dependencies. Requires Node.js 20+ for built-in fetch().
 //
-// NOTE: gpt-image-2 always returns b64_json. Do NOT send `response_format`.
+// NOTE: GPT Image models always return b64_json. Do NOT send `response_format`.
 // Use `output_format` for the image encoding (png/jpeg/webp).
 //
 // Usage:
@@ -40,13 +40,17 @@ const zlib = require("zlib");
   }
 })();
 
+// Pinned snapshot so output style doesn't shift under existing projects when
+// OpenAI updates the alias. Use --model gpt-image-2.5-flare for the alias.
+const DEFAULT_MODEL = "gpt-image-2.5-flare-2026-09-08";
+
 // ---------------------------------------------------------------------------
 // Early --help check (before argument parsing, so it works with any flags)
 // ---------------------------------------------------------------------------
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`
-generate.cjs - OpenAI gpt-image-2 API wrapper
+generate.cjs - OpenAI GPT Image API wrapper (default: gpt-image-2.5-flare)
 
 Usage:
   node generate.cjs --prompt "..." --output "./path/to/image.png" [options]
@@ -61,17 +65,28 @@ Options:
                           Common: 1024x1024, 1536x1024, 1024x1536,
                           2048x2048, 2048x1152, 3840x2160, 2160x3840
                           (default: 1024x1024)
-  --quality <quality>     low | medium | high | auto (default: low)
+  --quality <quality>     low | medium | high | auto, plus xhigh | max on
+                          GPT Image 2.5 models (default: low)
   --background <bg>       transparent | opaque | auto (default: auto)
-                          transparent requires --transparent-mode.
-  --transparent-mode <m>  reject | chroma-key | fallback-model (default: reject)
-                          chroma-key keeps gpt-image-2, requests an opaque
-                          solid key background, then removes it locally.
-                          fallback-model uses gpt-image-1.5 for native alpha.
+  --transparent-mode <m>  How --background transparent is produced (default: auto)
+                          auto: model alpha when the model supports it
+                            (GPT Image 2.5); otherwise an error naming options.
+                          native-alpha: require the model's own alpha channel.
+                          chroma-key: request an opaque solid key background
+                            from --model, then remove it locally (PNG only).
+                          fallback-model: native alpha via gpt-image-1.5.
+                          reject: refuse --background transparent.
+  --no-alpha-cleanup      Keep model alpha exactly as returned. By default,
+                          native-alpha PNGs snap near-opaque alpha (>=240) to
+                          255, near-clear alpha (<=2) to 0, and bleed edge
+                          colors into clear pixels.
   --chroma-key <hex>      Chroma-key color for local removal (default: #00ff00)
   --chroma-tolerance <n>  Chroma-key RGB distance tolerance, 0-442 (default: 24)
   --output-compression <n> JPEG/WEBP compression, 0-100. Not valid for PNG.
-  --model <model>         Model name (default: gpt-image-2)
+  --model <model>         Model name (default: ${DEFAULT_MODEL})
+                          Also: gpt-image-2.5-sunburst (slower, more detail),
+                          gpt-image-2, gpt-image-1.5
+  --timeout <seconds>     Per-request timeout (default: 300; 600 for xhigh/max)
   --client-request-id <id> Override generated request ID
   --dry-run               Validate and print request summary without API call
   --help, -h              Show this help message
@@ -79,8 +94,8 @@ Options:
 Reference images (triggers /v1/images/edits endpoint):
   --image <path>          Input image file (repeatable, max 16). PNG/JPG/WEBP, <50 MB.
   --mask <path>           PNG mask with alpha channel for inpainting (<4 MB).
-  --input-fidelity <val>  Not supported with gpt-image-2. Image inputs are
-                          processed at high fidelity automatically.
+  --input-fidelity <val>  Not supported by GPT Image 2.x models. Image inputs
+                          are processed at high fidelity automatically.
 
 History (automatic by default):
   --history-id <string>   Override auto-derived ID (default: from output path)
@@ -94,8 +109,9 @@ Examples:
   node generate.cjs --prompt "A pixel art sword" --output "./sword.png"
   node generate.cjs --prompt "Forest scene" --output "./bg.png" --size 3840x2160 --quality high
   node generate.cjs --prompt "Icon on a plain background" --output "./icon.png" --background opaque
+  node generate.cjs --prompt "Dragon sprite" --output "./dragon.png" --background transparent
   node generate.cjs --prompt "Pixel sprite" --output "./sprite.png" --background transparent --transparent-mode chroma-key --chroma-key "#ff00ff"
-  node generate.cjs --prompt "Native-alpha icon" --output "./icon.png" --background transparent --transparent-mode fallback-model
+  node generate.cjs --prompt "Detailed hero art" --output "./hero.png" --model gpt-image-2.5-sunburst --quality high
   node generate.cjs --prompt "Make it blue" --output "./edit.png" --image "./orig.png"
   node generate.cjs --prompt "Match this style" --output "./new.png" --image "./ref1.png" --image "./ref2.png"
 `.trim());
@@ -137,15 +153,17 @@ function parseArgs(argv) {
     size: "1024x1024",
     quality: "low",
     background: "auto",
-    model: "gpt-image-2",
+    model: DEFAULT_MODEL,
     fallbackModel: null,
-    transparentMode: "reject",
+    transparentMode: "auto",
+    alphaCleanup: true,
+    timeoutSeconds: null,
     chromaKey: "#00ff00",
     chromaTolerance: "24",
     outputCompression: null,
     images: [],           // Reference images for edits endpoint
     mask: null,           // PNG mask for inpainting
-    inputFidelity: null,  // Unsupported by gpt-image-2
+    inputFidelity: null,  // Unsupported by GPT Image 2.x
     clientRequestId: null,
     dryRun: false,
     historyId: null,      // null = auto-derive from output filename
@@ -186,6 +204,12 @@ function parseArgs(argv) {
       case "--model":
         args.model = requireArgValue(flag, argv, ++i);
         break;
+      case "--no-alpha-cleanup":
+        args.alphaCleanup = false;
+        break;
+      case "--timeout":
+        args.timeoutSeconds = requireArgValue(flag, argv, ++i);
+        break;
       case "--output-compression":
         args.outputCompression = requireArgValue(flag, argv, ++i);
         break;
@@ -225,9 +249,23 @@ function parseArgs(argv) {
 // Validation
 // ---------------------------------------------------------------------------
 
-const VALID_QUALITIES = new Set(["low", "medium", "high", "auto"]);
+const BASE_QUALITIES = ["low", "medium", "high", "auto"];
+const EXTENDED_QUALITIES = ["low", "medium", "high", "xhigh", "max", "auto"];
 const VALID_BACKGROUNDS = new Set(["transparent", "opaque", "auto"]);
-const VALID_TRANSPARENT_MODES = new Set(["reject", "chroma-key", "fallback-model"]);
+const VALID_TRANSPARENT_MODES = new Set(["auto", "native-alpha", "chroma-key", "fallback-model", "reject"]);
+
+// Known model families. Unknown models are passed through permissively so a
+// new OpenAI model is usable before this table learns about it.
+const MODEL_PROFILES = [
+  { pattern: /^gpt-image-2\.5-/, family: "gpt-image-2.5", qualities: EXTENDED_QUALITIES, nativeAlpha: true },
+  { pattern: /^gpt-image-2(-|$)/, family: "gpt-image-2", qualities: BASE_QUALITIES, nativeAlpha: false },
+  { pattern: /^gpt-image-1/, family: "gpt-image-1", qualities: BASE_QUALITIES, nativeAlpha: true },
+];
+
+function modelProfile(model) {
+  return MODEL_PROFILES.find((profile) => profile.pattern.test(model)) ||
+    { family: null, qualities: EXTENDED_QUALITIES, nativeAlpha: true };
+}
 const VALID_EXTENSIONS = { ".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".webp": "webp" };
 const VALID_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const MAX_IMAGES = 16;
@@ -251,16 +289,16 @@ function validateSize(size) {
   const minEdge = Math.min(width, height);
   const pixels = width * height;
   if (width > 3840 || height > 3840) {
-    fail(`Invalid --size "${size}". Each edge must be <= 3840 for gpt-image-2.`);
+    fail(`Invalid --size "${size}". Each edge must be <= 3840 for GPT Image 2.x models.`);
   }
   if (width % 16 !== 0 || height % 16 !== 0) {
-    fail(`Invalid --size "${size}". Width and height must be multiples of 16 for gpt-image-2.`);
+    fail(`Invalid --size "${size}". Width and height must be multiples of 16 for GPT Image 2.x models.`);
   }
   if (maxEdge / minEdge > 3) {
-    fail(`Invalid --size "${size}". Long-edge to short-edge ratio must be <= 3:1 for gpt-image-2.`);
+    fail(`Invalid --size "${size}". Long-edge to short-edge ratio must be <= 3:1 for GPT Image 2.x models.`);
   }
   if (pixels < 655360 || pixels > 8294400) {
-    fail(`Invalid --size "${size}". Total pixels must be between 655360 and 8294400 for gpt-image-2.`);
+    fail(`Invalid --size "${size}". Total pixels must be between 655360 and 8294400 for GPT Image 2.x models.`);
   }
 }
 
@@ -287,12 +325,23 @@ function validate(args) {
   if (!args.prompt) fail("--prompt is required.");
   if (!args.output) fail("--output is required.");
   validateSize(args.size);
-  if (!VALID_QUALITIES.has(args.quality))
-    fail(`Invalid --quality "${args.quality}". Must be one of: ${[...VALID_QUALITIES].join(", ")}`);
+  const profile = modelProfile(args.model);
+  if (!EXTENDED_QUALITIES.includes(args.quality))
+    fail(`Invalid --quality "${args.quality}". Must be one of: ${EXTENDED_QUALITIES.join(", ")}`);
+  if (!profile.qualities.includes(args.quality))
+    fail(`--quality ${args.quality} is not supported by ${args.model}. Use ${profile.qualities.join(", ")}, or a GPT Image 2.5 model.`);
   if (!VALID_BACKGROUNDS.has(args.background))
     fail(`Invalid --background "${args.background}". Must be one of: ${[...VALID_BACKGROUNDS].join(", ")}`);
   if (!VALID_TRANSPARENT_MODES.has(args.transparentMode))
     fail(`Invalid --transparent-mode "${args.transparentMode}". Must be one of: ${[...VALID_TRANSPARENT_MODES].join(", ")}`);
+  if (args.timeoutSeconds !== null) {
+    if (!/^[0-9]+$/.test(args.timeoutSeconds) || Number(args.timeoutSeconds) < 1) {
+      fail(`Invalid --timeout "${args.timeoutSeconds}". Must be a positive integer number of seconds.`);
+    }
+    args.timeoutSeconds = Number(args.timeoutSeconds);
+  } else {
+    args.timeoutSeconds = args.quality === "xhigh" || args.quality === "max" ? 600 : 300;
+  }
   if (!/^#[0-9a-fA-F]{6}$/.test(args.chromaKey)) {
     fail(`Invalid --chroma-key "${args.chromaKey}". Must be a hex color like #00ff00.`);
   }
@@ -314,19 +363,26 @@ function validate(args) {
       fail("JPEG does not support transparency. Use .png or .webp with --background transparent.");
     }
     if (args.transparentMode === "reject") {
-      fail('gpt-image-2 does not use native background "transparent" by default. Use --transparent-mode chroma-key for transparent PNG cleanup, or --transparent-mode fallback-model only when native alpha is required.');
+      fail("--background transparent was refused by --transparent-mode reject.");
+    }
+    if (args.transparentMode === "auto") {
+      if (!profile.nativeAlpha) {
+        fail(`${args.model} does not support native transparent backgrounds. Omit --model to use the default ${DEFAULT_MODEL} (native alpha), or use --transparent-mode chroma-key for local PNG cleanup.`);
+      }
+      args.transparentMode = "native-alpha";
+    } else if (args.transparentMode === "native-alpha" && !profile.nativeAlpha) {
+      fail(`${args.model} does not support native transparent backgrounds. Use a GPT Image 2.5 model or --transparent-mode chroma-key.`);
     }
     if (args.transparentMode === "chroma-key") {
       if (ext !== ".png") {
-        fail("--transparent-mode chroma-key currently requires PNG output. Use .png or --transparent-mode fallback-model.");
+        fail("--transparent-mode chroma-key currently requires PNG output. Use .png, or native alpha with a GPT Image 2.5 model.");
       }
-      args.model = "gpt-image-2";
     }
     if (args.transparentMode === "fallback-model") {
       args.fallbackModel = "gpt-image-1.5";
       args.model = "gpt-image-1.5";
     }
-  } else if (args.transparentMode !== "reject") {
+  } else if (args.transparentMode !== "auto" && args.transparentMode !== "reject") {
     fail("--transparent-mode only applies when --background transparent is requested.");
   }
 
@@ -378,7 +434,7 @@ function validate(args) {
   }
 
   if (args.inputFidelity) {
-    fail("gpt-image-2 always uses high-fidelity image inputs; --input-fidelity is not supported.");
+    fail("GPT Image 2.x models always use high-fidelity image inputs; --input-fidelity is not supported.");
   }
 }
 
@@ -389,7 +445,6 @@ function validate(args) {
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503]);
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
-const FETCH_TIMEOUT_MS = 120_000; // 2 minutes
 
 // ---------------------------------------------------------------------------
 // Minimal PNG chroma-key post-processing
@@ -781,9 +836,52 @@ function suppressKeySpillOnVisibleEdges(parsed, key, tolerance) {
   return replacements.length;
 }
 
+// Models often paint the requested key slightly off (e.g. #ef03e4 for #ff00ff),
+// sometimes just outside the tolerance. When the image border is dominated by
+// one color near the requested key, key on that color instead.
+const CHROMA_BORDER_RING = 2;
+const CHROMA_MAX_DRIFT = 96;
+
+function borderPixelOffsets(parsed) {
+  const { width, height } = parsed;
+  const ring = Math.min(CHROMA_BORDER_RING, Math.floor(width / 2), Math.floor(height / 2));
+  const offsets = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (x >= ring && x < width - ring && y >= ring && y < height - ring) continue;
+      offsets.push((y * width + x) * 4);
+    }
+  }
+  return offsets;
+}
+
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function detectBorderKey(parsed, key, tolerance) {
+  const { rgba } = parsed;
+  const offsets = borderPixelOffsets(parsed).filter((offset) => rgba[offset + 3] > 0);
+  if (!offsets.length) return null;
+  const candidate = {
+    r: median(offsets.map((o) => rgba[o])),
+    g: median(offsets.map((o) => rgba[o + 1])),
+    b: median(offsets.map((o) => rgba[o + 2])),
+  };
+  const drift = Math.sqrt(colorDistanceSq(candidate.r, candidate.g, candidate.b, key));
+  if (drift <= tolerance || drift > CHROMA_MAX_DRIFT) return null;
+  const matching = offsets.filter((o) => colorDistanceSq(rgba[o], rgba[o + 1], rgba[o + 2], candidate) <= tolerance * tolerance).length;
+  if (matching / offsets.length < 0.5) return null;
+  const hex = "#" + [candidate.r, candidate.g, candidate.b].map((v) => v.toString(16).padStart(2, "0")).join("");
+  return { ...candidate, hex, drift: Math.round(drift) };
+}
+
 function chromaKeyPng(buffer, { chromaKey, tolerance }) {
-  const key = parseHexColor(chromaKey);
+  const requestedKey = parseHexColor(chromaKey);
   const parsed = parsePng(buffer);
+  const detectedKey = detectBorderKey(parsed, requestedKey, tolerance);
+  const key = detectedKey || requestedKey;
   let removedPixels = 0;
   let opaquePixels = 0;
   for (let i = 0; i < parsed.rgba.length; i += 4) {
@@ -800,8 +898,17 @@ function chromaKeyPng(buffer, { chromaKey, tolerance }) {
   }
   if (removedPixels === 0) {
     throw new Imagegen2Error(`Chroma-key post-processing found no pixels matching ${key.hex} within tolerance ${tolerance}.`, {
-      chromaKey: key.hex,
+      chromaKey: requestedKey.hex,
       tolerance,
+    });
+  }
+  const border = borderPixelOffsets(parsed);
+  const opaqueBorder = border.filter((offset) => parsed.rgba[offset + 3] > 0).length;
+  if (opaqueBorder / border.length > 0.5) {
+    throw new Imagegen2Error(`Chroma-key post-processing left ${Math.round(100 * opaqueBorder / border.length)}% of the image border opaque; the background did not match ${requestedKey.hex} within tolerance ${tolerance}. Retry, pick a different --chroma-key, or raise --chroma-tolerance.`, {
+      chromaKey: requestedKey.hex,
+      tolerance,
+      removedPixels,
     });
   }
   const alphaBleedPixels = alphaBleedTransparentPixels(parsed);
@@ -809,7 +916,8 @@ function chromaKeyPng(buffer, { chromaKey, tolerance }) {
   return {
     buffer: encodeRgbaPng(parsed),
     stats: {
-      chromaKey: key.hex,
+      chromaKey: requestedKey.hex,
+      ...(detectedKey ? { detectedKey: detectedKey.hex, keyDrift: detectedKey.drift } : {}),
       tolerance,
       removedPixels,
       retainedVisiblePixels: opaquePixels,
@@ -821,11 +929,49 @@ function chromaKeyPng(buffer, { chromaKey, tolerance }) {
   };
 }
 
+// GPT Image 2.5 native alpha tops out around 252 on solid subjects and leaves
+// alpha 1-2 specks in the background. Snap both, then bleed edge colors into
+// clear pixels so resizing doesn't pull in the hidden backdrop.
+const ALPHA_SNAP_OPAQUE = 240;
+const ALPHA_SNAP_CLEAR = 2;
+
+function cleanupModelAlphaPng(buffer) {
+  const parsed = parsePng(buffer);
+  const { rgba } = parsed;
+  let snappedOpaquePixels = 0;
+  let snappedClearPixels = 0;
+  let transparentPixels = 0;
+  for (let i = 3; i < rgba.length; i += 4) {
+    const alpha = rgba[i];
+    if (alpha >= ALPHA_SNAP_OPAQUE && alpha < 255) {
+      rgba[i] = 255;
+      snappedOpaquePixels++;
+    } else if (alpha > 0 && alpha <= ALPHA_SNAP_CLEAR) {
+      rgba[i] = 0;
+      snappedClearPixels++;
+    }
+    if (rgba[i] === 0) transparentPixels++;
+  }
+  const alphaBleedPixels = alphaBleedTransparentPixels(parsed);
+  return {
+    buffer: encodeRgbaPng(parsed),
+    stats: {
+      snappedOpaquePixels,
+      snappedClearPixels,
+      transparentPixels,
+      alphaBleedPixels,
+      width: parsed.width,
+      height: parsed.height,
+      ...(transparentPixels === 0 ? { warning: "Model returned no transparent pixels." } : {}),
+    },
+  };
+}
+
 async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithRetry(url, options, clientRequestId) {
+async function fetchWithRetry(url, options, clientRequestId, timeoutMs) {
   let lastError = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -839,11 +985,12 @@ async function fetchWithRetry(url, options, clientRequestId) {
     try {
       response = await fetch(url, {
         ...options,
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
       if (err.name === "TimeoutError") {
-        lastError = `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s`;
+        // Not retried: OpenAI may still finish (and bill) a timed-out request.
+        fail(`Request timed out after ${timeoutMs / 1000}s. Slow model/quality combinations (for example gpt-image-2.5-sunburst at max) can need a larger --timeout.`, { clientRequestId });
       } else {
         lastError = `Network error: ${err.message}`;
       }
@@ -994,7 +1141,7 @@ function chromaKeyPromptSuffix(color) {
 function normalizeRequest(args, outputFormat) {
   if (args.background === "transparent" && args.transparentMode === "chroma-key") {
     return {
-      model: "gpt-image-2",
+      model: args.model,
       prompt: `${args.prompt}\n\n${chromaKeyPromptSuffix(args.chromaKey)}`,
       background: "opaque",
       outputFormat: "png",
@@ -1008,8 +1155,15 @@ function normalizeRequest(args, outputFormat) {
   };
 }
 
-function buildPostprocessSummary(args) {
-  if (args.background !== "transparent" || args.transparentMode !== "chroma-key") return null;
+function buildPostprocessSummary(args, outputFormat) {
+  if (args.background !== "transparent") return null;
+  if (args.transparentMode === "native-alpha") {
+    if (!args.alphaCleanup) return null;
+    return outputFormat === "png"
+      ? { type: "alpha-cleanup", status: "pending-local-png-processing" }
+      : { type: "alpha-cleanup", status: "skipped", reason: "alpha cleanup only runs on PNG output" };
+  }
+  if (args.transparentMode !== "chroma-key") return null;
   return {
     type: "chroma-key",
     chromaKey: args.chromaKey.toLowerCase(),
@@ -1040,7 +1194,7 @@ function buildDryRun(args, outputFormat, outputPath, clientRequestId) {
     transparentMode: args.transparentMode,
     ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
     ...(args.transparentMode === "chroma-key" ? { chromaKey: args.chromaKey } : {}),
-    ...(buildPostprocessSummary(args) ? { postprocess: buildPostprocessSummary(args) } : {}),
+    ...(buildPostprocessSummary(args, outputFormat) ? { postprocess: buildPostprocessSummary(args, outputFormat) } : {}),
     output: outputPath,
     outputFormat,
     clientRequestId,
@@ -1099,7 +1253,7 @@ async function main() {
   } else {
     // --- Generations endpoint (JSON) ---
     url = "https://api.openai.com/v1/images/generations";
-    // NOTE: Do NOT include `response_format` - gpt-image-2 returns b64_json.
+    // NOTE: Do NOT include `response_format` - GPT Image models return b64_json.
     const requestBody = buildGenerationBody(args, outputFormat);
     fetchOptions = {
       method: "POST",
@@ -1109,7 +1263,7 @@ async function main() {
   }
 
   // Call the API
-  const response = await fetchWithRetry(url, fetchOptions, clientRequestId);
+  const response = await fetchWithRetry(url, fetchOptions, clientRequestId, args.timeoutSeconds * 1000);
   const openaiRequestId = response.headers?.get?.("x-request-id") || null;
 
   // Parse response
@@ -1121,7 +1275,7 @@ async function main() {
   }
 
   // Extract the base64 image data
-  // gpt-image-2 returns b64_json for Image API responses.
+  // GPT Image models return b64_json for Image API responses.
   const imageData = data?.data?.[0];
   if (!imageData || !imageData.b64_json) {
     fail("Unexpected API response: no image data (b64_json) returned.");
@@ -1129,13 +1283,16 @@ async function main() {
 
   let imageBuffer = Buffer.from(imageData.b64_json, "base64");
   let postprocessResult = null;
-  if (args.background === "transparent" && args.transparentMode === "chroma-key") {
+  const postprocessPlan = buildPostprocessSummary(args, outputFormat);
+  if (postprocessPlan && postprocessPlan.status === "skipped") {
+    postprocessResult = { type: postprocessPlan.type, status: "skipped", stats: { reason: postprocessPlan.reason } };
+  } else if (postprocessPlan) {
     try {
-      postprocessResult = chromaKeyPng(imageBuffer, {
-        chromaKey: args.chromaKey,
-        tolerance: args.chromaTolerance,
-      });
-      imageBuffer = postprocessResult.buffer;
+      const processed = postprocessPlan.type === "chroma-key"
+        ? chromaKeyPng(imageBuffer, { chromaKey: args.chromaKey, tolerance: args.chromaTolerance })
+        : cleanupModelAlphaPng(imageBuffer);
+      postprocessResult = { type: postprocessPlan.type, status: "completed", stats: processed.stats };
+      imageBuffer = processed.buffer;
     } catch (err) {
       if (err instanceof Imagegen2Error) {
         fail(err.message, { clientRequestId, openaiRequestId, ...err.extra });
@@ -1170,11 +1327,12 @@ async function main() {
     ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
     ...(postprocessResult ? {
       postprocess: {
-        type: "chroma-key",
-        status: "completed",
+        type: postprocessResult.type,
+        status: postprocessResult.status,
         ...postprocessResult.stats,
       },
     } : {}),
+    ...(data.usage ? { usage: data.usage } : {}),
     clientRequestId,
     openaiRequestId,
     ...(args.outputCompression !== null ? { outputCompression: args.outputCompression } : {}),
@@ -1215,10 +1373,13 @@ async function main() {
     };
     if (postprocessResult) {
       historyEntry.postprocess = {
-        type: "chroma-key",
-        status: "completed",
+        type: postprocessResult.type,
+        status: postprocessResult.status,
         ...postprocessResult.stats,
       };
+    }
+    if (data.usage) {
+      historyEntry.usage = data.usage;
     }
 
     if (args.images.length > 0) {
@@ -1252,5 +1413,8 @@ if (require.main === module) {
     alphaBleedTransparentPixels,
     suppressKeySpillOnVisibleEdges,
     chromaKeyPng,
+    cleanupModelAlphaPng,
+    modelProfile,
+    DEFAULT_MODEL,
   };
 }
