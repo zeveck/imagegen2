@@ -27,6 +27,7 @@ const {
   chromaKeyPng,
   cleanupModelAlphaPng,
   DEFAULT_MODEL,
+  IMAGEGEN2_VERSION,
 } = require(SCRIPT);
 
 const TEMP_DIR = mkdtempSync(path.join(tmpdir(), 'imagegen2-test-'));
@@ -170,6 +171,20 @@ for (const agentDir of ['.codex/skills/imagegen2', '.claude/skills/imagegen2', '
     assert.equal(readFileSync(agentReference, 'utf8'), readFileSync(REFERENCE, 'utf8'));
   });
 }
+
+test('CLI version matches package.json and is date-based', () => {
+  const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
+  assert.equal(IMAGEGEN2_VERSION, pkg.version);
+  assert.match(IMAGEGEN2_VERSION, /^20\d\d\.(1[0-2]|[1-9])\.([1-9]|[12]\d|3[01])$/);
+  assert.ok(readFileSync(path.resolve(__dirname, '../CHANGELOG.md'), 'utf8').includes(`## v${IMAGEGEN2_VERSION}`));
+});
+
+test('version is reported in help, dry-run, and errors', () => {
+  assert.ok(run(['--help']).stdout.includes(`imagegen2 v${IMAGEGEN2_VERSION}`));
+  const dry = run(['--dry-run', '--prompt', 'test', '--output', 'out.png']);
+  assert.equal(parseJson(dry.stdout).imagegen2Version, IMAGEGEN2_VERSION);
+  assert.equal(parseJson(run([]).stdout).imagegen2Version, IMAGEGEN2_VERSION);
+});
 
 test('--help documents GPT Image 2.5 and flexible options', () => {
   const r = run(['--help']);
@@ -1097,6 +1112,8 @@ test('mocked native alpha success reports cleanup and usage', () => {
   assert.equal(parsePng(readFileSync(output)).rgba[7], 255);
   const history = parseJson(readFileSync(path.join(cwd, '.imagegen2-history.jsonl'), 'utf8'));
   assert.deepEqual(history.usage, usage);
+  assert.equal(body.imagegen2Version, IMAGEGEN2_VERSION);
+  assert.equal(history.imagegen2Version, IMAGEGEN2_VERSION);
   assert.deepEqual(history.postprocess, body.postprocess);
 });
 

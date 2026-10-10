@@ -8,6 +8,18 @@ and packaged as self-contained Agent Skills for multiple coding agents. Use it
 for sprites, tiles, item icons, UI elements, portraits, backgrounds, concept
 art, and reference-image variants.
 
+## What's New in v2026.10.10
+
+- Defaults to OpenAI GPT Image 2.5 Flare: about 3x faster and 4x cheaper than
+  `gpt-image-2` at the same quality setting.
+- `--background transparent` now uses native model alpha, with clean soft edges
+  on fire, smoke, glow, and fur.
+- New `xhigh`/`max` quality, `gpt-image-2.5-sunburst` for detailed finals, and
+  `IMAGEGEN2_MODEL` to pin a project's model.
+
+See the [changelog](CHANGELOG.md) for behavior changes and the
+[upgrade notes](docs/migration-from-imagegen.md#upgrading-from-imagegen2-010-gpt-image-2-to-v20261010).
+
 ## Choosing a Skill
 
 These sibling skills are complementary. The benchmark prompts below are shared

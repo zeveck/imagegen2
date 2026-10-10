@@ -42,6 +42,9 @@ const zlib = require("zlib");
 
 // Alias, so installs keep working when OpenAI retires a snapshot. Projects
 // that need a fixed model set IMAGEGEN2_MODEL (e.g. in .env) or pass --model.
+// Date-based release version; keep in sync with package.json (tests check).
+const IMAGEGEN2_VERSION = "2026.10.10";
+
 const DEFAULT_MODEL = "gpt-image-2.5-flare";
 
 // "latest" (in IMAGEGEN2_MODEL or --model) means the default alias above.
@@ -55,7 +58,7 @@ function resolveModel(model) {
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`
-generate.cjs - OpenAI GPT Image API wrapper (default: gpt-image-2.5-flare)
+imagegen2 v${IMAGEGEN2_VERSION} - OpenAI GPT Image API wrapper (default: ${DEFAULT_MODEL})
 
 Usage:
   node generate.cjs --prompt "..." --output "./path/to/image.png" [options]
@@ -131,7 +134,7 @@ Examples:
 // ---------------------------------------------------------------------------
 
 function fail(message, extra = {}) {
-  process.stdout.write(JSON.stringify({ success: false, error: message, ...extra }) + "\n");
+  process.stdout.write(JSON.stringify({ success: false, error: message, ...extra, imagegen2Version: IMAGEGEN2_VERSION }) + "\n");
   process.exit(1);
 }
 
@@ -1195,6 +1198,7 @@ function buildDryRun(args, outputFormat, outputPath, clientRequestId) {
   return {
     success: true,
     dryRun: true,
+    imagegen2Version: IMAGEGEN2_VERSION,
     mode: isEdit ? "edit" : "generation",
     endpoint,
     method: "POST",
@@ -1326,6 +1330,7 @@ async function main() {
   // Build result
   const result = {
     success: true,
+    imagegen2Version: IMAGEGEN2_VERSION,
     output: outputPath,
     historyId: historyId,
     size: args.size,
@@ -1358,6 +1363,7 @@ async function main() {
     const historyEntry = {
       id: historyId,
       timestamp: new Date().toISOString(),
+      imagegen2Version: IMAGEGEN2_VERSION,
       prompt: args.prompt,
       output: args.output, // Keep as provided (relative path)
       params: {
@@ -1425,5 +1431,6 @@ if (require.main === module) {
     cleanupModelAlphaPng,
     modelProfile,
     DEFAULT_MODEL,
+    IMAGEGEN2_VERSION,
   };
 }

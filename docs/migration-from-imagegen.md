@@ -96,19 +96,19 @@ node cli/generate.cjs \
   --size 2048x1152
 ```
 
-## Upgrading from imagegen2 0.1 (gpt-image-2)
+## Upgrading from imagegen2 0.1.0 (gpt-image-2) to v2026.10.10
 
-imagegen2 0.2 switches the default model from `gpt-image-2` to
+imagegen2 v2026.10.10 switches the default model from `gpt-image-2` to
 `gpt-image-2.5-flare`. Existing commands keep working:
 
-| imagegen2 0.1 | imagegen2 0.2 |
+| imagegen2 0.1.0 | imagegen2 v2026.10.10 |
 |---------------|---------------|
 | default model `gpt-image-2` | default model `gpt-image-2.5-flare`; set `IMAGEGEN2_MODEL` or pass `--model` to choose another |
 | `--background transparent` alone failed (`--transparent-mode reject` default) | uses native alpha (`--transparent-mode auto` default); `reject` is still accepted |
 | `--transparent-mode chroma-key` always used `gpt-image-2` | uses `--model` (default Flare); detects a drifted key color on the image border and fails if most of the border stays opaque |
 | `--quality low|medium|high|auto` | adds `xhigh` and `max` on GPT Image 2.5 models |
 | fixed 120s request timeout, retried on timeout | `--timeout` (default 300s, 600s for `xhigh`/`max`), not retried on timeout |
-| output JSON without token usage | output JSON and history include `usage` |
+| output JSON without token usage or version | output JSON and history include `usage` and `imagegen2Version` |
 
 Projects mid-way through a consistent asset set made with `gpt-image-2` can
 stay on it by adding `IMAGEGEN2_MODEL=gpt-image-2` to the project's `.env`
