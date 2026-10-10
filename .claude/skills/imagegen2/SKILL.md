@@ -31,7 +31,9 @@ node /path/to/imagegen2-skill/generate.cjs --prompt "..." --output "..." [option
 
 ## Important Differences from the old imagegen skill
 
-- Default model is `gpt-image-2.5-flare-2026-09-08` (fast). Use
+- Default model is `gpt-image-2.5-flare` (fast). A project can set
+  `IMAGEGEN2_MODEL` in `.env` to pin a model or snapshot; respect it and
+  don't pass `--model` unless asked. Use
   `--model gpt-image-2.5-sunburst` for slower, more detailed final art, and
   `--model gpt-image-2` only to match assets made before the 2.5 upgrade.
 - Quality levels `xhigh` and `max` are available on GPT Image 2.5 models.

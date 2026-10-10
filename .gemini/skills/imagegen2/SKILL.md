@@ -21,7 +21,8 @@ Recommended workflow:
 4. Run `--dry-run` for validation when using reference images or unusual sizes.
 5. Run the CLI, parse JSON stdout, and report the saved path.
 
-The default model is `gpt-image-2.5-flare-2026-09-08`. Use
+The default model is `gpt-image-2.5-flare`, or the project's `IMAGEGEN2_MODEL`
+from `.env` when set. Use
 `--model gpt-image-2.5-sunburst` for slower, more detailed finals. Quality
 levels `xhigh` and `max` are available on GPT Image 2.5 models.
 

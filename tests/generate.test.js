@@ -224,9 +224,37 @@ test('--dry-run does not require OPENAI_API_KEY', () => {
   assert.equal(body.success, true);
   assert.equal(body.dryRun, true);
   assert.equal(body.model, DEFAULT_MODEL);
-  assert.ok(DEFAULT_MODEL.startsWith('gpt-image-2.5-flare-'));
+  assert.equal(DEFAULT_MODEL, 'gpt-image-2.5-flare');
   assert.equal(body.mode, 'generation');
   assert.equal(body.params.quality, 'low');
+});
+
+test('IMAGEGEN2_MODEL sets the project default and --model overrides it', () => {
+  const env = { ...process.env, IMAGEGEN2_MODEL: 'gpt-image-2.5-flare-2026-09-08' };
+  const pinned = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { env });
+  assert.equal(pinned.status, 0, pinned.stdout);
+  assert.equal(parseJson(pinned.stdout).params.model, 'gpt-image-2.5-flare-2026-09-08');
+  const override = run(['--dry-run', '--prompt', 'test', '--output', 'out.png', '--model', 'gpt-image-2.5-sunburst'], { env });
+  assert.equal(parseJson(override.stdout).params.model, 'gpt-image-2.5-sunburst');
+});
+
+test('latest resolves to the default model in IMAGEGEN2_MODEL and --model', () => {
+  const env = { ...process.env, IMAGEGEN2_MODEL: 'latest' };
+  const fromEnv = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { env });
+  assert.equal(parseJson(fromEnv.stdout).params.model, DEFAULT_MODEL);
+  const pinnedEnv = { ...process.env, IMAGEGEN2_MODEL: 'gpt-image-2' };
+  const fromFlag = run(['--dry-run', '--prompt', 'test', '--output', 'out.png', '--model', 'latest'], { env: pinnedEnv });
+  assert.equal(parseJson(fromFlag.stdout).params.model, DEFAULT_MODEL);
+});
+
+test('IMAGEGEN2_MODEL is read from a project .env file', () => {
+  const cwd = mkdtempSync(path.join(TEMP_DIR, 'env-model-'));
+  writeFileSync(path.join(cwd, '.env'), 'IMAGEGEN2_MODEL=gpt-image-2\n');
+  const env = { ...process.env };
+  delete env.IMAGEGEN2_MODEL;
+  const r = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { cwd, env });
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
 });
 
 test('--dry-run generation reports endpoint and request id', () => {
@@ -335,6 +363,7 @@ test('--background transparent exits non-zero for gpt-image-2 and names options'
     const r = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--background', 'transparent', '--model', 'gpt-image-2', '--transparent-mode', mode]);
     assert.notEqual(r.status, 0);
     assert.ok(r.stdout.includes('gpt-image-2 does not support native transparent backgrounds'), r.stdout);
+    assert.ok(r.stdout.includes(DEFAULT_MODEL), r.stdout);
     assert.ok(r.stdout.includes('--transparent-mode chroma-key'), r.stdout);
   }
 });

@@ -40,9 +40,14 @@ const zlib = require("zlib");
   }
 })();
 
-// Pinned snapshot so output style doesn't shift under existing projects when
-// OpenAI updates the alias. Use --model gpt-image-2.5-flare for the alias.
-const DEFAULT_MODEL = "gpt-image-2.5-flare-2026-09-08";
+// Alias, so installs keep working when OpenAI retires a snapshot. Projects
+// that need a fixed model set IMAGEGEN2_MODEL (e.g. in .env) or pass --model.
+const DEFAULT_MODEL = "gpt-image-2.5-flare";
+
+// "latest" (in IMAGEGEN2_MODEL or --model) means the default alias above.
+function resolveModel(model) {
+  return !model || model === "latest" ? DEFAULT_MODEL : model;
+}
 
 // ---------------------------------------------------------------------------
 // Early --help check (before argument parsing, so it works with any flags)
@@ -83,7 +88,8 @@ Options:
   --chroma-key <hex>      Chroma-key color for local removal (default: #00ff00)
   --chroma-tolerance <n>  Chroma-key RGB distance tolerance, 0-442 (default: 24)
   --output-compression <n> JPEG/WEBP compression, 0-100. Not valid for PNG.
-  --model <model>         Model name (default: ${DEFAULT_MODEL})
+  --model <model>         Model name, or "latest" for ${DEFAULT_MODEL}
+                          (default: $IMAGEGEN2_MODEL, else latest)
                           Also: gpt-image-2.5-sunburst (slower, more detail),
                           gpt-image-2, gpt-image-1.5
   --timeout <seconds>     Per-request timeout (default: 300; 600 for xhigh/max)
@@ -102,8 +108,10 @@ History (automatic by default):
   --history-parent <str>  Parent generation ID (for iterations)
   --no-history            Disable history logging for this generation
 
-Environment:
+Environment (also read from .env):
   OPENAI_API_KEY          Required. Your OpenAI API key.
+  IMAGEGEN2_MODEL         Project default model: "latest" (the default), or an
+                          exact model such as gpt-image-2.5-flare-2026-09-08.
 
 Examples:
   node generate.cjs --prompt "A pixel art sword" --output "./sword.png"
@@ -153,7 +161,7 @@ function parseArgs(argv) {
     size: "1024x1024",
     quality: "low",
     background: "auto",
-    model: DEFAULT_MODEL,
+    model: process.env.IMAGEGEN2_MODEL || "latest",
     fallbackModel: null,
     transparentMode: "auto",
     alphaCleanup: true,
@@ -322,6 +330,7 @@ function validateImageFile(filePath, label, { maxBytes, allowedExtensions } = {}
 }
 
 function validate(args) {
+  args.model = resolveModel(args.model);
   if (!args.prompt) fail("--prompt is required.");
   if (!args.output) fail("--output is required.");
   validateSize(args.size);
@@ -367,11 +376,11 @@ function validate(args) {
     }
     if (args.transparentMode === "auto") {
       if (!profile.nativeAlpha) {
-        fail(`${args.model} does not support native transparent backgrounds. Omit --model to use the default ${DEFAULT_MODEL} (native alpha), or use --transparent-mode chroma-key for local PNG cleanup.`);
+        fail(`${args.model} does not support native transparent backgrounds. Use a GPT Image 2.5 model such as ${DEFAULT_MODEL} (native alpha), or --transparent-mode chroma-key for local PNG cleanup.`);
       }
       args.transparentMode = "native-alpha";
     } else if (args.transparentMode === "native-alpha" && !profile.nativeAlpha) {
-      fail(`${args.model} does not support native transparent backgrounds. Use a GPT Image 2.5 model or --transparent-mode chroma-key.`);
+      fail(`${args.model} does not support native transparent backgrounds. Use a GPT Image 2.5 model such as ${DEFAULT_MODEL} (native alpha), or --transparent-mode chroma-key for local PNG cleanup.`);
     }
     if (args.transparentMode === "chroma-key") {
       if (ext !== ".png") {

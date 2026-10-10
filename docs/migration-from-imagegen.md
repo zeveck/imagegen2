@@ -9,7 +9,7 @@ folders for Codex, Claude Code, and Gemini.
 | Old `imagegen` | New `imagegen2` |
 |----------------|-----------------|
 | `.claude/skills/imagegen/generate.cjs` | `cli/generate.cjs` for repo development, or the bundled `generate.cjs` in the installed `imagegen2` skill folder |
-| default model `gpt-image-1` | default model `gpt-image-2.5-flare-2026-09-08` |
+| default model `gpt-image-1` | default model `gpt-image-2.5-flare` |
 | `.imagegen-history.jsonl` | `.imagegen2-history.jsonl` |
 | fixed legacy sizes | flexible GPT Image 2.x sizes |
 | `--input-fidelity high|low` | unsupported; GPT Image 2.x uses high fidelity automatically |
@@ -99,17 +99,18 @@ node cli/generate.cjs \
 ## Upgrading from imagegen2 0.1 (gpt-image-2)
 
 imagegen2 0.2 switches the default model from `gpt-image-2` to
-`gpt-image-2.5-flare-2026-09-08`. Existing commands keep working:
+`gpt-image-2.5-flare`. Existing commands keep working:
 
 | imagegen2 0.1 | imagegen2 0.2 |
 |---------------|---------------|
-| default model `gpt-image-2` | default model `gpt-image-2.5-flare-2026-09-08`; pass `--model gpt-image-2` to keep matching older assets |
+| default model `gpt-image-2` | default model `gpt-image-2.5-flare`; set `IMAGEGEN2_MODEL` or pass `--model` to choose another |
 | `--background transparent` alone failed (`--transparent-mode reject` default) | uses native alpha (`--transparent-mode auto` default); `reject` is still accepted |
 | `--transparent-mode chroma-key` always used `gpt-image-2` | uses `--model` (default Flare); detects a drifted key color on the image border and fails if most of the border stays opaque |
 | `--quality low|medium|high|auto` | adds `xhigh` and `max` on GPT Image 2.5 models |
 | fixed 120s request timeout, retried on timeout | `--timeout` (default 300s, 600s for `xhigh`/`max`), not retried on timeout |
 | output JSON without token usage | output JSON and history include `usage` |
 
-Projects mid-way through a consistent asset set (for example an animation made
-with `gpt-image-2`) should pass `--model gpt-image-2` until that set is done,
-so new frames match the old ones.
+Projects mid-way through a consistent asset set made with `gpt-image-2` can
+stay on it by adding `IMAGEGEN2_MODEL=gpt-image-2` to the project's `.env`
+until that set is done, so new assets match the old ones. Any exact snapshot,
+such as `gpt-image-2.5-flare-2026-09-08`, works the same way.

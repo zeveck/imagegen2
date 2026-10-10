@@ -87,7 +87,7 @@ node /path/to/imagegen2-skill/generate.cjs \
 |-----------|--------|---------|-------|
 | `--prompt` | string | required | Exact prompt sent to the image model |
 | `--output` | `.png`, `.jpg`, `.jpeg`, `.webp` path | required | Parent directory is created automatically |
-| `--model` | model id | `gpt-image-2.5-flare-2026-09-08` | `gpt-image-2.5-sunburst` for slower, more detailed finals; `gpt-image-2` only to match pre-2.5 assets |
+| `--model` | model id | `$IMAGEGEN2_MODEL`, else `gpt-image-2.5-flare` | `gpt-image-2.5-sunburst` for slower, more detailed finals; `gpt-image-2` only to match pre-2.5 assets |
 | `--size` | `auto` or valid `WxH` | `1024x1024` | Edges <=3840, multiples of 16, ratio <=3:1 |
 | `--quality` | `low`, `medium`, `high`, `xhigh`, `max`, `auto` | `low` | Use low for drafts, high for keepers; `xhigh`/`max` are GPT Image 2.5 only |
 | `--background` | `auto`, `opaque`, `transparent` | `auto` | Transparent uses native alpha on GPT Image 2.5 |

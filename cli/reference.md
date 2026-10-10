@@ -5,9 +5,14 @@ Supplementary style presets, prompt templates, and practical guidance for the
 
 ## Model Notes
 
-`imagegen2` defaults to OpenAI GPT Image 2.5 Flare, pinned to the snapshot
-`gpt-image-2.5-flare-2026-09-08` so output style does not shift when OpenAI
-updates the alias.
+`imagegen2` defaults to OpenAI GPT Image 2.5 Flare (`gpt-image-2.5-flare`),
+which follows OpenAI's latest Flare snapshot.
+
+To keep a whole project on one exact model, set `IMAGEGEN2_MODEL` in the
+project's `.env`, for example `IMAGEGEN2_MODEL=gpt-image-2.5-flare-2026-09-08`.
+`IMAGEGEN2_MODEL=latest` (or leaving it unset) tracks the default.
+`--model` still overrides it for a single command; `--model latest` uses the
+default even in a pinned project.
 
 | Model | Use it for | Notes |
 |---|---|---|

@@ -167,9 +167,16 @@ to match the input image's format and size and to include an alpha channel.
 
 | Model | Use it for |
 |-------|------------|
-| `gpt-image-2.5-flare` (default, pinned to `gpt-image-2.5-flare-2026-09-08`) | Almost everything: fast, native transparency, `xhigh`/`max` quality |
+| `gpt-image-2.5-flare` (default) | Almost everything: fast, native transparency, `xhigh`/`max` quality |
 | `gpt-image-2.5-sunburst` | Slower, more detailed final art at the same token price |
 | `gpt-image-2` | Matching assets made before the 2.5 upgrade (no native transparency) |
+
+The default follows OpenAI's latest Flare snapshot. To keep a whole project on
+one exact model, set `IMAGEGEN2_MODEL` in the project's `.env`, for example
+`IMAGEGEN2_MODEL=gpt-image-2.5-flare-2026-09-08`.
+`IMAGEGEN2_MODEL=latest` (or leaving it unset) tracks the default.
+`--model` still overrides it for a single command; `--model latest` uses the
+default even in a pinned project.
 
 In a 2026-10-09 comparison at `medium` quality, Flare was about 3x faster and
 4x cheaper per image than `gpt-image-2`, and held character identity across
@@ -271,7 +278,7 @@ JPEG cannot be used for transparent output.
 --output-compression <0-100>     # JPEG/WebP only
 --image <path>                   # repeatable, max 16
 --mask <png-path>
---model <id>                     # default gpt-image-2.5-flare-2026-09-08
+--model <id|latest>              # default $IMAGEGEN2_MODEL, else latest (gpt-image-2.5-flare)
 --timeout <seconds>              # default 300, 600 for xhigh/max
 --client-request-id <id>
 --dry-run
