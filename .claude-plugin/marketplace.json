@@ -1,0 +1,14 @@
+{
+  "name": "imagegen2",
+  "owner": {
+    "name": "zeveck"
+  },
+  "description": "imagegen2: game-oriented image asset generation with OpenAI GPT Image 2.5.",
+  "plugins": [
+    {
+      "name": "imagegen2",
+      "source": ".",
+      "description": "Generate and edit game-oriented image assets with OpenAI GPT Image 2.5."
+    }
+  ]
+}

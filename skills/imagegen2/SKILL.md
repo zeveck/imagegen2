@@ -2,7 +2,7 @@
 name: imagegen2
 description: Generate or edit game-oriented raster assets using OpenAI GPT Image 2.5 (gpt-image-2.5-flare by default) through a bundled zero-dependency CLI. Ideal for sprites, tiles, UI elements, icons, portraits, backgrounds, concept art, and reference-image edits. Supports iteration and project asset organization.
 disable-model-invocation: false
-allowed-tools: "Bash(node .claude/skills/imagegen2/generate.cjs *), Bash(node */imagegen2/generate.cjs *), Bash(node cli/generate.cjs *), Bash(node generate.cjs *)"
+allowed-tools: "Bash(node ${CLAUDE_SKILL_DIR}/generate.cjs *), Bash(node */imagegen2/generate.cjs *), Bash(node cli/generate.cjs *)"
 argument-hint: <description> [--image path] [size: auto|WxH] [quality: low|medium|high|xhigh|max] [transparent] [format: png|webp|jpg]
 ---
 
@@ -11,12 +11,13 @@ argument-hint: <description> [--image path] [size: auto|WxH] [quality: low|mediu
 Use this skill when the user asks to generate, edit, or iterate on project-local
 bitmap assets with OpenAI GPT Image 2.5.
 
-The CLI is bundled next to this `SKILL.md`. Resolve it relative to the skill
-directory when installed. In this repository, the canonical development copy is
-also available at `cli/generate.cjs`.
+The CLI is bundled next to this `SKILL.md`, at `${CLAUDE_SKILL_DIR}/generate.cjs`.
+That path works whether the skill was installed as a plugin or copied into a
+skills folder. In the imagegen2 repository itself, the canonical development
+copy is `cli/generate.cjs`.
 
 ```bash
-node /path/to/imagegen2-skill/generate.cjs --prompt "..." --output "..." [options]
+node ${CLAUDE_SKILL_DIR}/generate.cjs --prompt "..." --output "..." [options]
 ```
 
 ## Workflow
@@ -55,7 +56,7 @@ node /path/to/imagegen2-skill/generate.cjs --prompt "..." --output "..." [option
 ## Examples
 
 ```bash
-node /path/to/imagegen2-skill/generate.cjs \
+node ${CLAUDE_SKILL_DIR}/generate.cjs \
   --prompt "32-bit pixel art cat wearing a top hat, centered, blank background, no text" \
   --output "./assets/sprites/cat-tophat.png" \
   --quality low \
@@ -63,7 +64,7 @@ node /path/to/imagegen2-skill/generate.cjs \
 ```
 
 ```bash
-node /path/to/imagegen2-skill/generate.cjs \
+node ${CLAUDE_SKILL_DIR}/generate.cjs \
   --prompt "Create a potion icon matching this item style" \
   --output "./assets/items/potion.png" \
   --image "./assets/items/sword.png" \
@@ -71,7 +72,7 @@ node /path/to/imagegen2-skill/generate.cjs \
 ```
 
 ```bash
-node /path/to/imagegen2-skill/generate.cjs \
+node ${CLAUDE_SKILL_DIR}/generate.cjs \
   --prompt "A cute 16-bit RPG kitten sprite, centered, no text, isolated on a transparent background, no shadows, no ground" \
   --output "./assets/sprites/kitten.png" \
   --background transparent \
@@ -79,7 +80,7 @@ node /path/to/imagegen2-skill/generate.cjs \
 ```
 
 ```bash
-node /path/to/imagegen2-skill/generate.cjs \
+node ${CLAUDE_SKILL_DIR}/generate.cjs \
   --prompt "A clean pixel art health potion icon, standalone, no text, solid flat #ff00ff chroma-key background, no shadows, no gradients, no background objects" \
   --output "./assets/items/health-potion.png" \
   --background transparent \
@@ -88,4 +89,5 @@ node /path/to/imagegen2-skill/generate.cjs \
   --quality low
 ```
 
-Read `reference.md` for style presets and prompt templates when needed.
+Read `${CLAUDE_SKILL_DIR}/reference.md` for style presets and prompt templates
+when needed.

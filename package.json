@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "node tests/generate.test.js",
-    "test:all": "bash scripts/test-all.sh"
+    "test:all": "bash scripts/test-all.sh",
+    "sync": "bash scripts/sync-skills.sh"
   }
 }

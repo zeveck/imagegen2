@@ -163,7 +163,7 @@ function encodeFilteredPngForTest({ width, height, colorType, raw, filters }) {
 
 console.log('\nimagegen2 generate.cjs - offline validation tests\n');
 
-for (const agentDir of ['.codex/skills/imagegen2', '.claude/skills/imagegen2', '.gemini/skills/imagegen2']) {
+for (const agentDir of ['.codex/skills/imagegen2', 'skills/imagegen2', '.gemini/skills/imagegen2']) {
   test(`${agentDir} bundles current CLI and reference files`, () => {
     const agentScript = path.resolve(__dirname, '..', agentDir, 'generate.cjs');
     const agentReference = path.resolve(__dirname, '..', agentDir, 'reference.md');
@@ -177,6 +177,22 @@ test('CLI version matches package.json and is date-based', () => {
   assert.equal(IMAGEGEN2_VERSION, pkg.version);
   assert.match(IMAGEGEN2_VERSION, /^20\d\d\.(1[0-2]|[1-9])\.([1-9]|[12]\d|3[01])$/);
   assert.ok(readFileSync(path.resolve(__dirname, '../CHANGELOG.md'), 'utf8').includes(`## v${IMAGEGEN2_VERSION}`));
+});
+
+test('Claude plugin manifests match the release and point at the skill', () => {
+  const root = path.resolve(__dirname, '..');
+  const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const plugin = JSON.parse(readFileSync(path.join(root, '.claude-plugin/plugin.json'), 'utf8'));
+  const marketplace = JSON.parse(readFileSync(path.join(root, '.claude-plugin/marketplace.json'), 'utf8'));
+  assert.equal(plugin.name, 'imagegen2');
+  assert.equal(plugin.version, pkg.version);
+  assert.equal(marketplace.name, 'imagegen2');
+  assert.deepEqual(marketplace.plugins.map((p) => [p.name, p.source]), [['imagegen2', '.']]);
+  assert.ok(!existsSync(path.join(root, '.claude/skills/imagegen2')), 'Claude skill moved to skills/imagegen2');
+  const skill = readFileSync(path.join(root, 'skills/imagegen2/SKILL.md'), 'utf8');
+  assert.ok(skill.includes('Bash(node ${CLAUDE_SKILL_DIR}/generate.cjs *)'));
+  assert.ok(!skill.includes('.claude/skills/imagegen2'));
+  assert.ok(!skill.includes('/path/to/imagegen2-skill'));
 });
 
 test('version is reported in help, dry-run, and errors', () => {

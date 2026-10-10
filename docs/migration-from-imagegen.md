@@ -108,6 +108,7 @@ imagegen2 v2026.10.10 switches the default model from `gpt-image-2` to
 | `--transparent-mode chroma-key` always used `gpt-image-2` | uses `--model` (default Flare); detects a drifted key color on the image border and fails if most of the border stays opaque |
 | `--quality low|medium|high|auto` | adds `xhigh` and `max` on GPT Image 2.5 models |
 | fixed 120s request timeout, retried on timeout | `--timeout` (default 300s, 600s for `xhigh`/`max`), not retried on timeout |
+| Claude skill copied from `.claude/skills/imagegen2` | Claude Code plugin (`/plugin install imagegen2 --marketplace zeveck/imagegen2`), or copy `skills/imagegen2` |
 | output JSON without token usage or version | output JSON and history include `usage` and `imagegen2Version` |
 
 Projects mid-way through a consistent asset set made with `gpt-image-2` can

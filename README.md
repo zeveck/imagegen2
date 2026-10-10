@@ -73,24 +73,35 @@ Reference-image edit, using the same input photo as `/imagegen`:
 
 ## Install
 
-The repository ships one canonical CLI for local development plus
-self-contained skill folders for Codex, Claude Code, and Gemini. The skill
-folders duplicate the tiny zero-dependency CLI so they continue to work when an
-agent installs only that folder from GitHub.
+### Claude Code
+
+Install imagegen2 as a Claude Code plugin (Claude Code 2.1.275 or later):
 
 ```text
-cli/generate.cjs
-cli/reference.md
-.codex/skills/imagegen2/SKILL.md
-.codex/skills/imagegen2/generate.cjs
-.codex/skills/imagegen2/reference.md
-.claude/skills/imagegen2/SKILL.md
-.claude/skills/imagegen2/generate.cjs
-.claude/skills/imagegen2/reference.md
-.gemini/skills/imagegen2/SKILL.md
-.gemini/skills/imagegen2/generate.cjs
-.gemini/skills/imagegen2/reference.md
+/plugin install imagegen2 --marketplace zeveck/imagegen2
 ```
+
+Or in two steps, which also works on older versions:
+
+```text
+/plugin marketplace add zeveck/imagegen2
+/plugin install imagegen2@imagegen2
+```
+
+The skill is then available as `/imagegen2` (or `/imagegen2:imagegen2`).
+Update to a new release with:
+
+```bash
+claude plugin marketplace update imagegen2
+claude plugin update imagegen2@imagegen2
+```
+
+then run `/reload-plugins` in any open session. The installed version is shown
+by `claude plugin list` and reported as `imagegen2Version` in every CLI result.
+
+Without the plugin system, copy `skills/imagegen2` into a project's
+`.claude/skills/` or your user skills directory. Copies don't update; re-copy
+to upgrade.
 
 ### Codex
 
@@ -103,18 +114,6 @@ $skill-installer install https://github.com/zeveck/imagegen2/tree/main/.codex/sk
 Restart Codex after installing so the skill index refreshes. You can also copy
 `.codex/skills/imagegen2` into your Codex skills location. The installed skill
 runs its bundled `generate.cjs`.
-
-### Claude Code
-
-Ask Claude Code to install the Claude skill folder:
-
-```text
-Please install the imagegen2 skill from https://github.com/zeveck/imagegen2/tree/main/.claude/skills/imagegen2 into this project.
-```
-
-You can also copy `.claude/skills/imagegen2` into the target project or user
-skills directory. Claude Code uses the Claude-specific frontmatter in
-`SKILL.md`, including `allowed-tools` and `argument-hint`.
 
 ### Gemini
 
@@ -134,6 +133,27 @@ Run `/skills reload` in Gemini CLI if it does not appear immediately.
 If your Gemini CLI version does not accept GitHub tree URLs, clone this repo
 and run the `gemini skills link` command against the local
 `.gemini/skills/imagegen2` directory.
+
+### Repository Layout
+
+The repository ships one canonical CLI for development plus self-contained
+skill folders for each agent. The skill folders duplicate the tiny
+zero-dependency CLI so each works when installed on its own.
+
+```text
+cli/generate.cjs                   # canonical CLI
+cli/reference.md                   # canonical style/prompt reference
+.claude-plugin/plugin.json         # Claude Code plugin manifest
+.claude-plugin/marketplace.json    # single-plugin marketplace
+skills/imagegen2/                  # Claude Code skill (plugin skill)
+.codex/skills/imagegen2/           # Codex skill
+.gemini/skills/imagegen2/          # Gemini skill
+```
+
+After editing `cli/generate.cjs` or `cli/reference.md`, run `npm run sync` to
+copy them into the skill folders; `npm test` fails if they drift. When
+developing the Claude skill in this repo, load it with
+`claude --plugin-dir .`.
 
 ## CLI
 

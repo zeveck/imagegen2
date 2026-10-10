@@ -14,6 +14,16 @@ GPT Image 2.5 upgrade. Existing commands keep working; defaults and a few
 failure cases changed. See
 [Upgrading from imagegen2 0.1.0](docs/migration-from-imagegen.md#upgrading-from-imagegen2-010-gpt-image-2-to-v20261010).
 
+### Claude Code plugin
+
+- imagegen2 is now a Claude Code plugin with its own marketplace:
+  `/plugin install imagegen2 --marketplace zeveck/imagegen2`. Installed copies
+  update with `claude plugin update imagegen2@imagegen2`.
+- The Claude skill moved from `.claude/skills/imagegen2/` to
+  `skills/imagegen2/`, and its `SKILL.md` runs the bundled CLI through
+  `${CLAUDE_SKILL_DIR}`, so it works from a plugin install or a copied folder.
+  Links to the old `.claude/skills/imagegen2` folder no longer resolve.
+
 ### New default model
 
 - The default model is now `gpt-image-2.5-flare` (was `gpt-image-2`). In our
