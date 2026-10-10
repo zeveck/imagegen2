@@ -93,7 +93,7 @@ node /path/to/imagegen2-skill/generate.cjs \
 | `--background` | `auto`, `opaque`, `transparent` | `auto` | Transparent uses native alpha on GPT Image 2.5 |
 | `--transparent-mode` | `auto`, `native-alpha`, `chroma-key`, `fallback-model`, `reject` | `auto` | `auto` uses native alpha when the model supports it; `chroma-key` performs local PNG cleanup on `--model` output |
 | `--no-alpha-cleanup` | flag | false | Keep raw model alpha (skip snapping near-opaque/near-clear alpha) |
-| `--timeout` | seconds | `300` (`600` for `xhigh`/`max`) | Timed-out requests are not retried |
+| `--timeout` | seconds | `300` (`600` for `xhigh`/`max`) | Per API attempt; timed-out requests are not retried |
 | `--chroma-key` | `#rrggbb` | `#00ff00` | Key color for chroma-key mode |
 | `--chroma-tolerance` | `0`-`442` | `24` | RGB distance tolerance for chroma-key cleanup |
 | `--output-compression` | `0`-`100` | none | JPEG/WebP only |
@@ -135,8 +135,8 @@ Other modes:
   alpha. Choose key colors absent from the subject, commonly `#ff00ff` or
   `#00ff00`, and prompt for "solid flat chroma-key background", "no shadows",
   "no gradients", and "no background objects". Cleanup detects a drifted key
-  color on the image border (reported as `postprocess.detectedKey`) and fails
-  if most of the border stays opaque. Tell the user that transparency is local
+  color in the image corners (reported as `postprocess.detectedKey`) and fails
+  if 3 or more of the 4 corners stay opaque. Tell the user that transparency is local
   chroma-key cleanup rather than native model alpha.
 - `fallback-model`: legacy native alpha via `gpt-image-1.5`.
 - `reject`: refuse transparent output.

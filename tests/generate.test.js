@@ -72,11 +72,15 @@ function test(name, fn) {
   }
 }
 
+// Defined-but-empty IMAGEGEN2_MODEL keeps the developer's shell or .env from
+// changing the default model under test (.env never overrides set variables).
+const TEST_ENV = { ...process.env, IMAGEGEN2_MODEL: '' };
+
 function run(args, opts = {}) {
   const result = spawnSync('node', [...(opts.nodeArgs || []), SCRIPT, ...args], {
     encoding: 'utf8',
     cwd: opts.cwd || process.cwd(),
-    env: opts.env || process.env,
+    env: opts.env || TEST_ENV,
     timeout: 10000,
   });
   return { stdout: result.stdout || '', stderr: result.stderr || '', status: result.status };
@@ -248,7 +252,7 @@ test('--foo exits non-zero with unknown argument error', () => {
 
 test('--dry-run does not require OPENAI_API_KEY', () => {
   const r = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], {
-    env: { ...process.env, OPENAI_API_KEY: '' },
+    env: { ...TEST_ENV, OPENAI_API_KEY: '' },
   });
   assert.equal(r.status, 0, r.stdout);
   const body = parseJson(r.stdout);
@@ -261,7 +265,7 @@ test('--dry-run does not require OPENAI_API_KEY', () => {
 });
 
 test('IMAGEGEN2_MODEL sets the project default and --model overrides it', () => {
-  const env = { ...process.env, IMAGEGEN2_MODEL: 'gpt-image-2.5-flare-2026-09-08' };
+  const env = { ...TEST_ENV, IMAGEGEN2_MODEL: 'gpt-image-2.5-flare-2026-09-08' };
   const pinned = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { env });
   assert.equal(pinned.status, 0, pinned.stdout);
   assert.equal(parseJson(pinned.stdout).params.model, 'gpt-image-2.5-flare-2026-09-08');
@@ -270,10 +274,10 @@ test('IMAGEGEN2_MODEL sets the project default and --model overrides it', () => 
 });
 
 test('latest resolves to the default model in IMAGEGEN2_MODEL and --model', () => {
-  const env = { ...process.env, IMAGEGEN2_MODEL: 'latest' };
+  const env = { ...TEST_ENV, IMAGEGEN2_MODEL: 'latest' };
   const fromEnv = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { env });
   assert.equal(parseJson(fromEnv.stdout).params.model, DEFAULT_MODEL);
-  const pinnedEnv = { ...process.env, IMAGEGEN2_MODEL: 'gpt-image-2' };
+  const pinnedEnv = { ...TEST_ENV, IMAGEGEN2_MODEL: 'gpt-image-2' };
   const fromFlag = run(['--dry-run', '--prompt', 'test', '--output', 'out.png', '--model', 'latest'], { env: pinnedEnv });
   assert.equal(parseJson(fromFlag.stdout).params.model, DEFAULT_MODEL);
 });
@@ -306,7 +310,7 @@ test('--dry-run generation reports endpoint and request id', () => {
 
 test('valid args without API key fail after validation with request id', () => {
   const r = run(['--prompt', 'test', '--output', 't.png', '--client-request-id', 'missing-key-test'], {
-    env: { ...process.env, OPENAI_API_KEY: '' },
+    env: { ...TEST_ENV, OPENAI_API_KEY: '' },
   });
   assert.notEqual(r.status, 0);
   const body = parseJson(r.stdout);
@@ -345,13 +349,36 @@ for (const quality of ['xhigh', 'max']) {
 }
 
 test('--timeout validates positive integers', () => {
-  for (const value of ['0', '-5', 'soon']) {
+  for (const value of ['0', '-5', 'soon', '3000000']) {
     const r = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--timeout', value]);
     assert.notEqual(r.status, 0);
     assert.ok(r.stdout.includes('Invalid --timeout'), r.stdout);
   }
   const ok = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--timeout', '900']);
   assert.equal(ok.status, 0, ok.stdout);
+  assert.equal(parseJson(ok.stdout).timeoutSeconds, 900);
+});
+
+test('default timeout is 300s, or 600s for xhigh/max', () => {
+  const base = run(['--dry-run', '--prompt', 'test', '--output', 't.png']);
+  assert.equal(parseJson(base.stdout).timeoutSeconds, 300);
+  const slow = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--quality', 'max']);
+  assert.equal(parseJson(slow.stdout).timeoutSeconds, 600);
+});
+
+test('fallback-model checks quality against gpt-image-1.5', () => {
+  const r = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--background', 'transparent', '--transparent-mode', 'fallback-model', '--quality', 'xhigh']);
+  assert.notEqual(r.status, 0);
+  assert.ok(r.stdout.includes('--quality xhigh is not supported by gpt-image-1.5'), r.stdout);
+});
+
+test('model names are trimmed and lowercased; blank means latest', () => {
+  for (const [value, expected] of [[' gpt-image-2 ', 'gpt-image-2'], ['GPT-Image-2', 'gpt-image-2'], [' ', DEFAULT_MODEL], ['latest ', DEFAULT_MODEL]]) {
+    const r = run(['--dry-run', '--prompt', 'test', '--output', 't.png'], { env: { ...TEST_ENV, IMAGEGEN2_MODEL: value } });
+    assert.equal(parseJson(r.stdout).params.model, expected, JSON.stringify(value));
+  }
+  const upper = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--model', 'GPT-Image-2', '--quality', 'max']);
+  assert.ok(upper.stdout.includes('not supported by gpt-image-2'), upper.stdout);
 });
 
 test('--quality ultra exits non-zero', () => {
@@ -949,7 +976,7 @@ test('mocked chroma-key success writes stdout and history postprocess metadata',
     cwd,
     nodeArgs: ['--import', MOCK_FETCH],
     env: {
-      ...process.env,
+      ...TEST_ENV,
       OPENAI_API_KEY: 'test-key',
       IMAGEGEN2_MOCK_B64_JSON: image.toString('base64'),
       IMAGEGEN2_MOCK_REQUEST_ID: 'req_mock_success',
@@ -1005,7 +1032,7 @@ test('mocked chroma-key failure reports machine-readable postprocess fields', ()
     cwd,
     nodeArgs: ['--import', MOCK_FETCH],
     env: {
-      ...process.env,
+      ...TEST_ENV,
       OPENAI_API_KEY: 'test-key',
       IMAGEGEN2_MOCK_B64_JSON: image.toString('base64'),
       IMAGEGEN2_MOCK_REQUEST_ID: 'req_mock_failure',
@@ -1054,15 +1081,26 @@ test('chromaKeyPng ignores border colors far from the requested key', () => {
   );
 });
 
-test('chromaKeyPng fails when most of the border stays opaque', () => {
+test('chromaKeyPng fails when the background stays opaque in the corners', () => {
   // A few key pixels inside, but the background itself never matched.
   const pixels = [];
   for (let i = 0; i < 64; i++) pixels.push(i === 27 || i === 28 ? [255, 0, 255, 255] : [120, 120, 120, 255]);
   const input = encodeRgbaPng({ width: 8, height: 8, rgba: rgbaBuffer(pixels) });
   assert.throws(
     () => chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 24 }),
-    (err) => err instanceof Imagegen2Error && err.message.includes('border opaque')
+    (err) => err instanceof Imagegen2Error && err.message.includes('4 image corners opaque')
   );
+});
+
+test('chromaKeyPng allows a ground strip covering the bottom edge', () => {
+  // Bottom 60% is opaque ground, top 40% is key: two corners stay opaque.
+  const pixels = [];
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) pixels.push(y < 7 ? [255, 0, 255, 255] : [60, 140, 40, 255]);
+  }
+  const input = encodeRgbaPng({ width: 16, height: 16, rgba: rgbaBuffer(pixels) });
+  const result = chromaKeyPng(input, { chromaKey: '#ff00ff', tolerance: 24 });
+  assert.equal(result.stats.removedPixels, 7 * 16);
 });
 
 test('cleanupModelAlphaPng snaps near-opaque and near-clear alpha and bleeds edges', () => {
@@ -1112,7 +1150,7 @@ test('mocked native alpha success reports cleanup and usage', () => {
     cwd,
     nodeArgs: ['--import', MOCK_FETCH],
     env: {
-      ...process.env,
+      ...TEST_ENV,
       OPENAI_API_KEY: 'test-key',
       IMAGEGEN2_MOCK_BODY_JSON: JSON.stringify({ data: [{ b64_json: image.toString('base64') }], usage }),
     },
@@ -1131,6 +1169,66 @@ test('mocked native alpha success reports cleanup and usage', () => {
   assert.equal(body.imagegen2Version, IMAGEGEN2_VERSION);
   assert.equal(history.imagegen2Version, IMAGEGEN2_VERSION);
   assert.deepEqual(history.postprocess, body.postprocess);
+});
+
+function mockRun(args, body, name) {
+  const cwd = mkdtempSync(path.join(TEMP_DIR, name + '-'));
+  const r = run(args.map((a) => a.replace('{cwd}', cwd)), {
+    cwd,
+    nodeArgs: ['--import', MOCK_FETCH],
+    env: { ...TEST_ENV, OPENAI_API_KEY: 'test-key', IMAGEGEN2_MOCK_BODY_JSON: JSON.stringify(body) },
+  });
+  return { ...r, cwd };
+}
+
+test('mocked anim8gen chroma-key edit keys a drifted background end to end', () => {
+  const pixels = [];
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) pixels.push(x >= 6 && x < 10 && y >= 6 && y < 10 ? [200, 40, 30, 255] : [238, 4, 228, 255]);
+  }
+  const image = encodeRgbaPng({ width: 16, height: 16, rgba: rgbaBuffer(pixels) });
+  const r = mockRun([
+    '--prompt', 'frame 1',
+    '--output', '{cwd}/f1.png',
+    '--background', 'transparent',
+    '--transparent-mode', 'chroma-key',
+    '--chroma-key', '#ff00ff',
+    '--no-history',
+    '--image', TEMP_PNG,
+    '--image', TEMP_PNG,
+  ], { data: [{ b64_json: image.toString('base64') }] }, 'mock-anim8gen');
+  assert.equal(r.status, 0, r.stdout || r.stderr);
+  const body = parseJson(r.stdout);
+  assert.equal(body.transparentMode, 'chroma-key');
+  assert.equal(body.postprocess.type, 'chroma-key');
+  assert.equal(body.postprocess.status, 'completed');
+  assert.equal(body.postprocess.chromaKey, '#ff00ff');
+  assert.equal(body.postprocess.detectedKey, '#ee04e4');
+  assert.equal(body.postprocess.removedPixels, 256 - 16);
+  assert.equal(body.inputImages.length, 2);
+  assert.ok(!existsSync(path.join(r.cwd, '.imagegen2-history.jsonl')));
+});
+
+test('mocked native alpha keeps the image when cleanup cannot parse it', () => {
+  // Any PNG the local parser rejects (here, a corrupted header checksum).
+  const png = encodeRgbaPng({ width: 1, height: 1, rgba: rgbaBuffer([[1, 2, 3, 255]]) });
+  png[24] = 16;
+  const r = mockRun(['--prompt', 'x', '--output', '{cwd}/out.png', '--background', 'transparent'],
+    { data: [{ b64_json: png.toString('base64') }] }, 'mock-cleanup-fail');
+  assert.equal(r.status, 0, r.stdout || r.stderr);
+  const body = parseJson(r.stdout);
+  assert.equal(body.postprocess.status, 'failed');
+  assert.ok(body.warning.includes('alpha-cleanup failed'), body.warning);
+  assert.ok(existsSync(path.join(r.cwd, 'out.png')));
+});
+
+test('mocked native alpha WEBP output skips cleanup but succeeds', () => {
+  const r = mockRun(['--prompt', 'x', '--output', '{cwd}/out.webp', '--background', 'transparent'],
+    { data: [{ b64_json: MINI_PNG.toString('base64') }] }, 'mock-webp');
+  assert.equal(r.status, 0, r.stdout || r.stderr);
+  const body = parseJson(r.stdout);
+  assert.equal(body.postprocess.status, 'skipped');
+  assert.equal(body.transparentMode, 'native-alpha');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

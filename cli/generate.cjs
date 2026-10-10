@@ -49,7 +49,8 @@ const DEFAULT_MODEL = "gpt-image-2.5-flare";
 
 // "latest" (in IMAGEGEN2_MODEL or --model) means the default alias above.
 function resolveModel(model) {
-  return !model || model === "latest" ? DEFAULT_MODEL : model;
+  const normalized = (model || "").trim().toLowerCase();
+  return !normalized || normalized === "latest" ? DEFAULT_MODEL : normalized;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +96,7 @@ Options:
                           (default: $IMAGEGEN2_MODEL, else latest)
                           Also: gpt-image-2.5-sunburst (slower, more detail),
                           gpt-image-2, gpt-image-1.5
-  --timeout <seconds>     Per-request timeout (default: 300; 600 for xhigh/max)
+  --timeout <seconds>     Per-attempt timeout (default: 300; 600 for xhigh/max)
   --client-request-id <id> Override generated request ID
   --dry-run               Validate and print request summary without API call
   --help, -h              Show this help message
@@ -337,18 +338,23 @@ function validate(args) {
   if (!args.prompt) fail("--prompt is required.");
   if (!args.output) fail("--output is required.");
   validateSize(args.size);
+  if (!VALID_BACKGROUNDS.has(args.background))
+    fail(`Invalid --background "${args.background}". Must be one of: ${[...VALID_BACKGROUNDS].join(", ")}`);
+  if (!VALID_TRANSPARENT_MODES.has(args.transparentMode))
+    fail(`Invalid --transparent-mode "${args.transparentMode}". Must be one of: ${[...VALID_TRANSPARENT_MODES].join(", ")}`);
+  // Settle the request model before anything that depends on it.
+  if (args.background === "transparent" && args.transparentMode === "fallback-model") {
+    args.fallbackModel = "gpt-image-1.5";
+    args.model = "gpt-image-1.5";
+  }
   const profile = modelProfile(args.model);
   if (!EXTENDED_QUALITIES.includes(args.quality))
     fail(`Invalid --quality "${args.quality}". Must be one of: ${EXTENDED_QUALITIES.join(", ")}`);
   if (!profile.qualities.includes(args.quality))
     fail(`--quality ${args.quality} is not supported by ${args.model}. Use ${profile.qualities.join(", ")}, or a GPT Image 2.5 model.`);
-  if (!VALID_BACKGROUNDS.has(args.background))
-    fail(`Invalid --background "${args.background}". Must be one of: ${[...VALID_BACKGROUNDS].join(", ")}`);
-  if (!VALID_TRANSPARENT_MODES.has(args.transparentMode))
-    fail(`Invalid --transparent-mode "${args.transparentMode}". Must be one of: ${[...VALID_TRANSPARENT_MODES].join(", ")}`);
   if (args.timeoutSeconds !== null) {
-    if (!/^[0-9]+$/.test(args.timeoutSeconds) || Number(args.timeoutSeconds) < 1) {
-      fail(`Invalid --timeout "${args.timeoutSeconds}". Must be a positive integer number of seconds.`);
+    if (!/^[0-9]+$/.test(args.timeoutSeconds) || Number(args.timeoutSeconds) < 1 || Number(args.timeoutSeconds) > MAX_TIMEOUT_SECONDS) {
+      fail(`Invalid --timeout "${args.timeoutSeconds}". Must be a whole number of seconds from 1 to ${MAX_TIMEOUT_SECONDS}.`);
     }
     args.timeoutSeconds = Number(args.timeoutSeconds);
   } else {
@@ -389,10 +395,6 @@ function validate(args) {
       if (ext !== ".png") {
         fail("--transparent-mode chroma-key currently requires PNG output. Use .png, or native alpha with a GPT Image 2.5 model.");
       }
-    }
-    if (args.transparentMode === "fallback-model") {
-      args.fallbackModel = "gpt-image-1.5";
-      args.model = "gpt-image-1.5";
     }
   } else if (args.transparentMode !== "auto" && args.transparentMode !== "reject") {
     fail("--transparent-mode only applies when --background transparent is requested.");
@@ -456,6 +458,7 @@ function validate(args) {
 
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503]);
 const MAX_RETRIES = 3;
+const MAX_TIMEOUT_SECONDS = 86_400; // well under Node's 32-bit timer limit
 const BASE_DELAY_MS = 1000;
 
 // ---------------------------------------------------------------------------
@@ -849,22 +852,24 @@ function suppressKeySpillOnVisibleEdges(parsed, key, tolerance) {
 }
 
 // Models often paint the requested key slightly off (e.g. #ef03e4 for #ff00ff),
-// sometimes just outside the tolerance. When the image border is dominated by
-// one color near the requested key, key on that color instead.
-const CHROMA_BORDER_RING = 2;
+// sometimes just outside the tolerance. When the image corners are dominated
+// by one color near the requested key, key on that color instead. Corners,
+// not whole edges, so a subject or ground strip touching one edge doesn't
+// decide the background color.
+const CHROMA_CORNER_PATCH = 16;
 const CHROMA_MAX_DRIFT = 96;
 
-function borderPixelOffsets(parsed) {
+function cornerPatchOffsets(parsed) {
   const { width, height } = parsed;
-  const ring = Math.min(CHROMA_BORDER_RING, Math.floor(width / 2), Math.floor(height / 2));
-  const offsets = [];
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (x >= ring && x < width - ring && y >= ring && y < height - ring) continue;
-      offsets.push((y * width + x) * 4);
+  const size = Math.max(1, Math.min(CHROMA_CORNER_PATCH, Math.floor(width / 4), Math.floor(height / 4)));
+  const corners = [[0, 0], [width - size, 0], [0, height - size], [width - size, height - size]];
+  return corners.map(([x0, y0]) => {
+    const offsets = [];
+    for (let y = y0; y < y0 + size; y++) {
+      for (let x = x0; x < x0 + size; x++) offsets.push((y * width + x) * 4);
     }
-  }
-  return offsets;
+    return offsets;
+  });
 }
 
 function median(values) {
@@ -872,9 +877,9 @@ function median(values) {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-function detectBorderKey(parsed, key, tolerance) {
+function detectCornerKey(parsed, key, tolerance) {
   const { rgba } = parsed;
-  const offsets = borderPixelOffsets(parsed).filter((offset) => rgba[offset + 3] > 0);
+  const offsets = cornerPatchOffsets(parsed).flat().filter((offset) => rgba[offset + 3] > 0);
   if (!offsets.length) return null;
   const candidate = {
     r: median(offsets.map((o) => rgba[o])),
@@ -892,7 +897,7 @@ function detectBorderKey(parsed, key, tolerance) {
 function chromaKeyPng(buffer, { chromaKey, tolerance }) {
   const requestedKey = parseHexColor(chromaKey);
   const parsed = parsePng(buffer);
-  const detectedKey = detectBorderKey(parsed, requestedKey, tolerance);
+  const detectedKey = detectCornerKey(parsed, requestedKey, tolerance);
   const key = detectedKey || requestedKey;
   let removedPixels = 0;
   let opaquePixels = 0;
@@ -914,10 +919,13 @@ function chromaKeyPng(buffer, { chromaKey, tolerance }) {
       tolerance,
     });
   }
-  const border = borderPixelOffsets(parsed);
-  const opaqueBorder = border.filter((offset) => parsed.rgba[offset + 3] > 0).length;
-  if (opaqueBorder / border.length > 0.5) {
-    throw new Imagegen2Error(`Chroma-key post-processing left ${Math.round(100 * opaqueBorder / border.length)}% of the image border opaque; the background did not match ${requestedKey.hex} within tolerance ${tolerance}. Retry, pick a different --chroma-key, or raise --chroma-tolerance.`, {
+  // A background that didn't key out shows up in every corner; a subject or
+  // ground strip touching an edge covers at most two.
+  const opaqueCorners = cornerPatchOffsets(parsed).filter((patch) =>
+    patch.filter((offset) => parsed.rgba[offset + 3] > 0).length > patch.length / 2
+  ).length;
+  if (opaqueCorners >= 3) {
+    throw new Imagegen2Error(`Chroma-key post-processing left ${opaqueCorners} of 4 image corners opaque, so the background probably did not match ${requestedKey.hex} within tolerance ${tolerance}. Retry, pick a different --chroma-key, or raise --chroma-tolerance.`, {
       chromaKey: requestedKey.hex,
       tolerance,
       removedPixels,
@@ -1207,6 +1215,7 @@ function buildDryRun(args, outputFormat, outputPath, clientRequestId) {
     transparentMode: args.transparentMode,
     ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
     ...(args.transparentMode === "chroma-key" ? { chromaKey: args.chromaKey } : {}),
+    timeoutSeconds: args.timeoutSeconds,
     ...(buildPostprocessSummary(args, outputFormat) ? { postprocess: buildPostprocessSummary(args, outputFormat) } : {}),
     output: outputPath,
     outputFormat,
@@ -1284,7 +1293,10 @@ async function main() {
   try {
     data = await response.json();
   } catch (err) {
-    fail(`Failed to parse API response as JSON: ${err.message}`);
+    if (err.name === "TimeoutError") {
+      fail(`Request timed out after ${args.timeoutSeconds}s while downloading the image. Slow model/quality combinations can need a larger --timeout.`, { clientRequestId, openaiRequestId });
+    }
+    fail(`Failed to parse API response as JSON: ${err.message}`, { clientRequestId, openaiRequestId });
   }
 
   // Extract the base64 image data
@@ -1307,10 +1319,13 @@ async function main() {
       postprocessResult = { type: postprocessPlan.type, status: "completed", stats: processed.stats };
       imageBuffer = processed.buffer;
     } catch (err) {
-      if (err instanceof Imagegen2Error) {
+      if (!(err instanceof Imagegen2Error)) throw err;
+      // Alpha cleanup is optional polish: keep the image the API returned.
+      // Chroma-key failures still fail, since the raw image has no alpha.
+      if (postprocessPlan.type !== "alpha-cleanup") {
         fail(err.message, { clientRequestId, openaiRequestId, ...err.extra });
       }
-      throw err;
+      postprocessResult = { type: postprocessPlan.type, status: "failed", stats: { reason: err.message } };
     }
   }
 
@@ -1352,6 +1367,12 @@ async function main() {
     ...(args.outputCompression !== null ? { outputCompression: args.outputCompression } : {}),
     bytes: imageBuffer.length,
   };
+  // Surface postprocess problems at the top level so callers don't miss them.
+  if (postprocessResult?.status === "failed") {
+    result.warning = `${postprocessResult.type} failed; saved the image as returned by the API: ${postprocessResult.stats.reason}`;
+  } else if (postprocessResult?.stats?.warning) {
+    result.warning = postprocessResult.stats.warning;
+  }
 
   if (isEdit) {
     result.inputImages = args.images;
@@ -1377,7 +1398,9 @@ async function main() {
         } : {}),
         model: args.model,
         transparentMode: args.transparentMode,
+        ...(args.transparentMode === "native-alpha" ? { alphaCleanup: args.alphaCleanup } : {}),
         ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
+        timeoutSeconds: args.timeoutSeconds,
         clientRequestId,
         openaiRequestId,
         ...(args.outputCompression !== null ? { outputCompression: args.outputCompression } : {}),

@@ -48,18 +48,25 @@ failure cases changed. See
   255, near-clear to 0, hidden RGB alpha-bled). `--no-alpha-cleanup` skips it.
 - `--transparent-mode chroma-key` keeps its meaning but now uses `--model`
   instead of always `gpt-image-2`.
-- Chroma-key cleanup detects a drifted key color on the image border (models
+- Chroma-key cleanup detects a drifted key color in the image corners (models
   often paint `#ff00ff` as roughly `#ee04e4`), reported as
   `postprocess.detectedKey`. This fixed 7 of 12 `gpt-image-2` animation frames
   that previously came back almost fully opaque.
 
 ### Behavior changes to know about
 
-- Chroma-key now **fails** instead of writing the image when most of the image
-  border stays opaque. Previously this case silently "succeeded".
-- Requests time out after 300s (600s for `xhigh`/`max`), configurable with
-  `--timeout`. Timeouts are no longer retried, because OpenAI may still finish
-  and bill a timed-out request.
+- Chroma-key now **fails** instead of writing the image when 3 or more of the
+  4 image corners stay opaque, which means the background never keyed out.
+  Previously this case silently "succeeded". A subject or ground strip touching
+  one edge doesn't trigger it.
+- Each API attempt times out after 300s (600s for `xhigh`/`max`), configurable
+  with `--timeout` (up to 86400). Timeouts are no longer retried, because
+  OpenAI may still finish and bill a timed-out request; rate-limit and server
+  errors are still retried up to 3 times.
+- If native-alpha cleanup can't process the returned PNG, the image is still
+  saved as returned, with `postprocess.status: "failed"` and a top-level
+  `warning`.
+- Model names from `--model` and `IMAGEGEN2_MODEL` are trimmed and lowercased.
 - With `--model gpt-image-2`, `--background transparent` still needs
   `--transparent-mode chroma-key`; the error names the options.
 

@@ -281,10 +281,10 @@ node cli/generate.cjs \
 
 Chroma-key mode normalizes the API request to `background: "opaque"` and adds
 prompt guidance for a solid flat key background. Models often paint the key a
-little off (for example `#ee04e4` for `#ff00ff`), so when the image border is
+little off (for example `#ee04e4` for `#ff00ff`), so when the image corners are
 dominated by a color near the requested key, cleanup keys on that detected
 color and reports it as `postprocess.detectedKey`. Cleanup fails rather than
-writing a mostly opaque image if most of the border stays opaque. The local
+writing a mostly opaque image if 3 or more of the 4 corners stay opaque. The local
 cleanup alpha-bleeds hidden RGB in fully transparent pixels from nearby visible
 pixels and can suppress strongly key-colored visible edge pixels when clean
 nearby subject colors are available. This conservative edge cleanup preserves
@@ -311,7 +311,7 @@ JPEG cannot be used for transparent output.
 --image <path>                   # repeatable, max 16
 --mask <png-path>
 --model <id|latest>              # default $IMAGEGEN2_MODEL, else latest (gpt-image-2.5-flare)
---timeout <seconds>              # default 300, 600 for xhigh/max
+--timeout <seconds>              # per attempt; default 300, 600 for xhigh/max
 --client-request-id <id>
 --dry-run
 ```

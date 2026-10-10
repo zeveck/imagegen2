@@ -190,10 +190,10 @@ calculator. Avoid hardcoding stale price promises into user-facing output.
   hard binary alpha or already depend on it. It requests an opaque solid
   key-color background from `--model`, removes matching pixels locally,
   alpha-bleeds hidden RGB, and suppresses strongly key-colored edge pixels. If
-  the image border is dominated by a color within 96 RGB units of the requested
-  key (models often paint `#ff00ff` as roughly `#ee04e4`), cleanup keys on that
-  detected color and reports it as `postprocess.detectedKey`. Cleanup fails if
-  most of the image border stays opaque. Chroma-key mode targets PNG output.
+  the image corners are dominated by a color within 96 RGB units of the
+  requested key (models often paint `#ff00ff` as roughly `#ee04e4`), cleanup
+  keys on that detected color and reports it as `postprocess.detectedKey`.
+  Cleanup fails if 3 or more of the 4 image corners stay opaque. Chroma-key mode targets PNG output.
 - For chroma-key, choose a key color absent from the subject, such as `#ff00ff`
   or `#00ff00`, and ask for a "solid flat chroma-key background", with "no
   shadows", "no gradients", and "no background objects". Keep

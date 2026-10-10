@@ -46,7 +46,7 @@ chroma-key cleanup:
 
 Prompt for a solid flat key background with no shadows, gradients, or
 background objects. Local cleanup removes matching key pixels (detecting a
-drifted key color on the image border), alpha-bleeds hidden RGB, and can
+drifted key color in the image corners), alpha-bleeds hidden RGB, and can
 suppress strongly key-colored visible edge pixels. Disclose that this
 transparency comes from local chroma-key cleanup rather than native model
 alpha.
