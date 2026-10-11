@@ -86,8 +86,8 @@ failure cases changed. See
   native-alpha showcase images and a Flare column in the reference-edit
   comparison.
 - Dev container refreshed from github.com/zeveck/devcontainers (`gh`,
-  `glab`, `auth`, `dc`, Node 24, and agent sign-ins and history that survive
-  rebuilds).
+  `glab`, `auth`, `dc`, Node 24). Agent history, memory, settings, and plugins
+  survive rebuilds; sign-ins don't, and `dc volumes` manages the saved data.
 - Docs, all three agent skill folders, tests, and the live smoke test are
   updated.
 
