@@ -43,7 +43,7 @@ const zlib = require("zlib");
 // Alias, so installs keep working when OpenAI retires a snapshot. Projects
 // that need a fixed model set IMAGEGEN2_MODEL (e.g. in .env) or pass --model.
 // Date-based release version; keep in sync with package.json (tests check).
-const IMAGEGEN2_VERSION = "2026.10.10";
+const IMAGEGEN2_VERSION = "2026.10.11";
 
 const DEFAULT_MODEL = "gpt-image-2.5-flare";
 

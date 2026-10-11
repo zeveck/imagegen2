@@ -8,11 +8,11 @@ before `2026.10.10`.
 The running version is shown by `--help` and reported as `imagegen2Version` in
 every JSON result and history entry.
 
-## v2026.10.10
+## v2026.10.11
 
 GPT Image 2.5 upgrade. Existing commands keep working; defaults and a few
 failure cases changed. See
-[Upgrading from imagegen2 0.1.0](docs/migration-from-imagegen.md#upgrading-from-imagegen2-010-gpt-image-2-to-v20261010).
+[Upgrading from imagegen2 0.1.0](docs/migration-from-imagegen.md#upgrading-from-imagegen2-010-gpt-image-2-to-v20261011).
 
 ### Claude Code plugin
 

@@ -1,6 +1,6 @@
 {
   "name": "imagegen2",
-  "version": "2026.10.10",
+  "version": "2026.10.11",
   "description": "Generate and edit game-oriented image assets (sprites, icons, tiles, UI, portraits, backgrounds) with OpenAI GPT Image 2.5 through a zero-dependency CLI. Requires an OPENAI_API_KEY.",
   "author": { "name": "zeveck" },
   "homepage": "https://github.com/zeveck/imagegen2",

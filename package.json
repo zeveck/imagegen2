@@ -1,6 +1,6 @@
 {
   "name": "openai-imagegen2",
-  "version": "2026.10.10",
+  "version": "2026.10.11",
   "private": true,
   "type": "module",
   "description": "Multi-agent skill and zero-dependency CLI for image generation with OpenAI GPT Image 2.5",

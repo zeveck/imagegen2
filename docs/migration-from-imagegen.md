@@ -96,12 +96,12 @@ node cli/generate.cjs \
   --size 2048x1152
 ```
 
-## Upgrading from imagegen2 0.1.0 (gpt-image-2) to v2026.10.10
+## Upgrading from imagegen2 0.1.0 (gpt-image-2) to v2026.10.11
 
-imagegen2 v2026.10.10 switches the default model from `gpt-image-2` to
+imagegen2 v2026.10.11 switches the default model from `gpt-image-2` to
 `gpt-image-2.5-flare`. Existing commands keep working:
 
-| imagegen2 0.1.0 | imagegen2 v2026.10.10 |
+| imagegen2 0.1.0 | imagegen2 v2026.10.11 |
 |---------------|---------------|
 | default model `gpt-image-2` | default model `gpt-image-2.5-flare`; set `IMAGEGEN2_MODEL` or pass `--model` to choose another |
 | `--background transparent` alone failed (`--transparent-mode reject` default) | uses native alpha (`--transparent-mode auto` default); `reject` is still accepted |
