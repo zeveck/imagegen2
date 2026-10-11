@@ -16,30 +16,26 @@ const path = require("path");
 const crypto = require("crypto");
 const zlib = require("zlib");
 
-// Load .env file if present (Node 20.12+ built-in, no dependencies).
-// Walk up from cwd first, so a project's .env is found from any subfolder even
-// when the CLI lives outside the project (a Claude Code plugin install), then
-// walk up from the script's own directory (a skill copied into the project).
+// Load .env files (Node 20.12+ built-in, no dependencies). Candidates are
+// cwd and its parents (a project's .env from any subfolder, even when the CLI
+// lives outside the project in a Claude Code plugin install), then the
+// script's own directory and its parents (a skill copied into a project or a
+// user skills folder). Every .env found is loaded, nearest first; a file never
+// overrides a variable that is already set, so the nearest value wins per
+// variable and an unrelated parent .env can't hide a key set elsewhere.
 (function loadEnv() {
   const tried = new Set();
-  const candidates = [];
   for (const start of [process.cwd(), __dirname]) {
     let dir = start;
     while (dir && dir !== path.dirname(dir)) {
-      candidates.push(dir);
+      const p = path.join(dir, ".env");
       dir = path.dirname(dir);
+      if (tried.has(p)) continue;
+      tried.add(p);
+      try {
+        if (fs.existsSync(p)) process.loadEnvFile(p);
+      } catch {}
     }
-  }
-  for (const d of candidates) {
-    const p = path.join(d, ".env");
-    if (tried.has(p)) continue;
-    tried.add(p);
-    try {
-      if (fs.existsSync(p)) {
-        process.loadEnvFile(p);
-        return;
-      }
-    } catch {}
   }
 })();
 

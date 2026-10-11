@@ -47,6 +47,10 @@ cp .env.example .env
 Set `OPENAI_API_KEY` in `.env`. Optionally set `OPENAI_ORGANIZATION` and
 `OPENAI_PROJECT` if your key needs explicit routing.
 
+The CLI loads every `.env` in the current directory and its parents, then in
+its own folder and its parents. The nearest file wins for each variable, and
+variables already set in your shell win over all of them.
+
 If a live call returns a verification error, verify the organization in the
 OpenAI platform settings. If the organization was just verified and the error
 persists, create a new API key for that verified organization/project.

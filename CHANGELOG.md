@@ -67,10 +67,13 @@ failure cases changed. See
   saved as returned, with `postprocess.status: "failed"` and a top-level
   `warning`.
 - Model names from `--model` and `IMAGEGEN2_MODEL` are trimmed and lowercased.
-- `.env` lookup walks up from the current directory before the CLI's own
-  folder, so a project's `.env` is found from any subfolder even when the CLI
-  runs from a plugin install. Previously only the current directory itself was
-  checked before the CLI's folder.
+- `.env` loading: the CLI now loads every `.env` in the current directory and
+  its parents, then in its own folder and its parents, nearest first, and a
+  file never overrides a variable that is already set. A project's `.env` is
+  found from any subfolder even when the CLI runs from a plugin install, and
+  an unrelated parent `.env` (such as `~/.env`) can't hide a key set in a
+  nearer one. Previously only the first `.env` found was loaded, checking the
+  current directory itself and then the CLI's folder and its parents.
 - With `--model gpt-image-2`, `--background transparent` still needs
   `--transparent-mode chroma-key`; the error names the options.
 

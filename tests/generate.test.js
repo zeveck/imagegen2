@@ -305,6 +305,19 @@ test('a project .env is found from a subfolder of the project', () => {
   assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
 });
 
+test('a parent .env without the key does not hide a nearer one, and nearest wins', () => {
+  const root = mkdtempSync(path.join(TEMP_DIR, 'env-layer-'));
+  const project = path.join(root, 'project');
+  mkdirSync(project, { recursive: true });
+  writeFileSync(path.join(root, '.env'), 'IMAGEGEN2_MODEL=gpt-image-1.5\nUNRELATED=1\n');
+  writeFileSync(path.join(project, '.env'), 'IMAGEGEN2_MODEL=gpt-image-2\n');
+  const env = { ...process.env };
+  delete env.IMAGEGEN2_MODEL;
+  const r = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { cwd: project, env });
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
+});
+
 test('--dry-run generation reports endpoint and request id', () => {
   const r = run([
     '--dry-run',
