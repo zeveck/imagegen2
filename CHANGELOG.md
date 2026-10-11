@@ -5,8 +5,8 @@ which are also valid semver. For a second release on the same day, use the next
 day's date rather than a `-1` suffix, because semver sorts `2026.10.10-1`
 before `2026.10.10`.
 
-The running version is shown by `--help` and reported as `imagegen2Version` in
-every JSON result and history entry.
+The running version is printed by `--version`, shown by `--help`, and reported
+as `imagegen2Version` in every JSON result and history entry.
 
 ## v2026.10.11
 
@@ -79,7 +79,8 @@ failure cases changed. See
 
 ### Also
 
-- JSON output and history include token `usage` and `imagegen2Version`.
+- JSON output and history include token `usage` and `imagegen2Version`, and
+  `--version` prints the version.
 - The README sample gallery is regenerated with `gpt-image-2.5-flare`, with
   native-alpha showcase images and a Flare column in the reference-edit
   comparison.

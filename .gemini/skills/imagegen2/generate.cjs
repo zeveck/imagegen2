@@ -53,8 +53,14 @@ function resolveModel(model) {
 }
 
 // ---------------------------------------------------------------------------
-// Early --help check (before argument parsing, so it works with any flags)
+// Early --version and --help checks (before argument parsing; --help works
+// with any flags, --version only on its own)
 // ---------------------------------------------------------------------------
+
+if (process.argv.length === 3 && process.argv[2] === "--version") {
+  console.log(IMAGEGEN2_VERSION);
+  process.exit(0);
+}
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`
@@ -99,6 +105,7 @@ Options:
   --client-request-id <id> Override generated request ID
   --dry-run               Validate and print request summary without API call
   --help, -h              Show this help message
+  --version               Print the imagegen2 version
 
 Reference images (triggers /v1/images/edits endpoint):
   --image <path>          Input image file (repeatable, max 16). PNG/JPG/WEBP, <50 MB.
@@ -188,6 +195,9 @@ function parseArgs(argv) {
       case "--help":
       case "-h":
         break; // Already handled above
+      case "--version":
+        fail("--version takes no other arguments.");
+        break;
       case "--prompt":
         args.prompt = requireArgValue(flag, argv, ++i);
         break;

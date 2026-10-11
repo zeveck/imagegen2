@@ -318,6 +318,15 @@ test('a parent .env without the key does not hide a nearer one, and nearest wins
   assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
 });
 
+test('--version prints only the version, and only on its own', () => {
+  const r = run(['--version']);
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), IMAGEGEN2_VERSION);
+  const combined = run(['--version', '--dry-run', '--prompt', 'x', '--output', 'out.png']);
+  assert.notEqual(combined.status, 0);
+  assert.match(parseJson(combined.stdout).error, /--version takes no other arguments/);
+});
+
 test('--dry-run generation reports endpoint and request id', () => {
   const r = run([
     '--dry-run',
