@@ -195,6 +195,8 @@ test('Claude plugin manifests match the release and point at the skill', () => {
   assert.equal(plugin.skills, './imagegen2');
   // The plugin is rooted at skills/, so an install copies only the skill.
   assert.ok(!existsSync(path.join(root, '.claude-plugin/plugin.json')));
+  // Installs copy only skills/, so the license has to live there too.
+  assert.equal(readFileSync(path.join(root, 'skills/LICENSE'), 'utf8'), readFileSync(path.join(root, 'LICENSE'), 'utf8'));
   assert.ok(!existsSync(path.join(root, '.claude/skills/imagegen2')), 'Claude skill moved to skills/imagegen2');
   const skill = readFileSync(path.join(root, 'skills/imagegen2/SKILL.md'), 'utf8');
   assert.ok(skill.includes('Bash(node ${CLAUDE_SKILL_DIR}/generate.cjs *)'));
