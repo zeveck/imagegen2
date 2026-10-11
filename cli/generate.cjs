@@ -17,15 +17,18 @@ const crypto = require("crypto");
 const zlib = require("zlib");
 
 // Load .env file if present (Node 20.12+ built-in, no dependencies).
-// Search cwd first, then walk up from the script's own directory so the
-// skill works regardless of where it's invoked from (worktrees, subdirs).
+// Walk up from cwd first, so a project's .env is found from any subfolder even
+// when the CLI lives outside the project (a Claude Code plugin install), then
+// walk up from the script's own directory (a skill copied into the project).
 (function loadEnv() {
   const tried = new Set();
-  const candidates = [process.cwd()];
-  let dir = __dirname;
-  while (dir && dir !== path.dirname(dir)) {
-    candidates.push(dir);
-    dir = path.dirname(dir);
+  const candidates = [];
+  for (const start of [process.cwd(), __dirname]) {
+    let dir = start;
+    while (dir && dir !== path.dirname(dir)) {
+      candidates.push(dir);
+      dir = path.dirname(dir);
+    }
   }
   for (const d of candidates) {
     const p = path.join(d, ".env");

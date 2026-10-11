@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { strict as assert } from 'node:assert';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import zlib from 'node:zlib';
 import path from 'node:path';
@@ -288,6 +288,19 @@ test('IMAGEGEN2_MODEL is read from a project .env file', () => {
   const env = { ...process.env };
   delete env.IMAGEGEN2_MODEL;
   const r = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { cwd, env });
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
+});
+
+test('a project .env is found from a subfolder of the project', () => {
+  // The CLI lives outside the project here, as in a plugin install.
+  const project = mkdtempSync(path.join(TEMP_DIR, 'env-walk-'));
+  const sub = path.join(project, 'assets', 'sprites');
+  mkdirSync(sub, { recursive: true });
+  writeFileSync(path.join(project, '.env'), 'IMAGEGEN2_MODEL=gpt-image-2\n');
+  const env = { ...process.env };
+  delete env.IMAGEGEN2_MODEL;
+  const r = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { cwd: sub, env });
   assert.equal(r.status, 0, r.stdout);
   assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
 });
