@@ -53,9 +53,10 @@ persists, create a new API key for that verified organization/project.
 
 ## Benchmark Gallery
 
-These outputs use the prompts in [examples/prompts.md](examples/prompts.md).
-The set is intentionally broad enough to reuse across `imagegen`, `imagegen2`,
-and `nanogen` for apples-to-apples comparison.
+These outputs use the prompts in [examples/prompts.md](examples/prompts.md),
+generated with the default `gpt-image-2.5-flare` at `--quality medium` (about
+$0.01-0.02 per image). The set is intentionally broad enough to reuse across
+`imagegen`, `imagegen2`, and `nanogen` for apples-to-apples comparison.
 
 | Sprite | Item icon | Tactical unit |
 |:------:|:---------:|:-------------:|
@@ -65,11 +66,19 @@ and `nanogen` for apples-to-apples comparison.
 |:------------:|:-------:|:----------:|
 | <img src="examples/images/isometric-grass-tile.png" width="220" alt="Isometric pixel art grass terrain tile"> | <img src="examples/images/settings-icon.png" width="220" alt="Flat vector settings gear icon"> | <img src="examples/images/forest-background.png" width="320" alt="Hand-painted fantasy forest background"> |
 
+Native transparency (`--background transparent`), straight from the model with
+no chroma-key cleanup. Soft edges like fire, smoke, glow, and feathers keep
+their partial alpha:
+
+| Fire and smoke | Glow and sparks | Feathers |
+|:--------------:|:---------------:|:--------:|
+| <img src="examples/images/transparent-fire-dragon.png" width="300" alt="Transparent hand-painted red dragon breathing fire and smoke"> | <img src="examples/images/transparent-arcane-orb.png" width="220" alt="Transparent glowing arcane orb with lightning and sparkles"> | <img src="examples/images/transparent-snow-owl.png" width="220" alt="Transparent painterly snowy owl with soft feathers"> |
+
 Reference-image edit, using the same input photo as `/imagegen`:
 
-| Input photo | `/imagegen` (`gpt-image-1`) | `imagegen2` (`gpt-image-2`) |
-|:-----------:|:---------------------------:|:---------------------------:|
-| <img src="examples/images/skeleton-photo.jpg" width="240" alt="Photo of a large skeleton decoration in snow and holiday lights"> | <img src="examples/images/skeleton-16bit-gpt-image-1.png" width="240" alt="gpt-image-1 16-bit pixel art skeleton example"> | <img src="examples/images/skeleton-16bit-gpt-image-2.png" width="240" alt="gpt-image-2 16-bit pixel art skeleton example"> |
+| Input photo | `/imagegen` (`gpt-image-1`) | `gpt-image-2` | `gpt-image-2.5-flare` |
+|:-----------:|:---------------------------:|:-------------:|:---------------------:|
+| <img src="examples/images/skeleton-photo.jpg" width="180" alt="Photo of a large skeleton decoration in snow and holiday lights"> | <img src="examples/images/skeleton-16bit-gpt-image-1.png" width="180" alt="gpt-image-1 16-bit pixel art skeleton example"> | <img src="examples/images/skeleton-16bit-gpt-image-2.png" width="180" alt="gpt-image-2 16-bit pixel art skeleton example"> | <img src="examples/images/skeleton-16bit-gpt-image-2.5-flare.png" width="180" alt="gpt-image-2.5-flare 16-bit pixel art skeleton example"> |
 
 ## Install
 

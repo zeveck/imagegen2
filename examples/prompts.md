@@ -1,7 +1,9 @@
 # ImageGen2 Benchmark Prompts
 
 The images in `examples/images/` were generated from these prompts with
-`gpt-image-2` at `--quality low`. This set is meant to be reusable across
+`gpt-image-2.5-flare` at `--quality medium` (v2026.10.11). The skeleton edits
+`skeleton-16bit-gpt-image-1.png` and `skeleton-16bit-gpt-image-2.png` are kept
+from earlier releases for comparison. This set is meant to be reusable across
 `imagegen`, `imagegen2`, and `nanogen` so outputs can be compared by prompt
 category rather than by README image count.
 
@@ -14,7 +16,10 @@ tactical-knight.png
 isometric-grass-tile.png
 settings-icon.png
 forest-background.png
-skeleton-16bit-gpt-image-2.png
+skeleton-16bit-gpt-image-2.5-flare.png
+transparent-fire-dragon.png
+transparent-arcane-orb.png
+transparent-snow-owl.png
 ```
 
 ## Sprite
@@ -63,6 +68,8 @@ Hand-painted fantasy forest background, twilight lighting, layered trees,
 soft mist, path leading into the distance, wide landscape composition, no text.
 ```
 
+Background uses `--size 1536x1024`.
+
 ## Reference Edit
 
 ```text
@@ -70,4 +77,36 @@ soft mist, path leading into the distance, wide landscape composition, no text.
 skeleton pose and overall silhouette from the photo, convert it into readable
 classic game sprite art with limited palette, crisp pixel edges, subtle shading,
 blank opaque background, no text, no watermark.
+```
+
+Uses `--image examples/images/skeleton-photo.jpg --size 1024x1536`.
+
+## Native Transparency
+
+All three use `--background transparent` (native alpha).
+
+Fire dragon (`--size 1536x1024`):
+
+```text
+Hand-painted fantasy game sprite. A small crimson dragon in side view breathing
+a roaring cone of orange fire with curling smoke and drifting embers, full body,
+centered, isolated on a transparent background, no shadows, no ground, no text,
+no watermark.
+```
+
+Arcane orb:
+
+```text
+Game VFX sprite. A floating arcane crystal orb crackling with violet and cyan
+lightning, soft magical glow, swirling sparkles and wisps of mist, centered,
+isolated on a transparent background, no shadows, no ground, no text, no
+watermark.
+```
+
+Snowy owl:
+
+```text
+Painterly fantasy creature sprite. A fluffy snowy owl with fine soft feathers,
+wings half spread, three-quarter view, full body, centered, isolated on a
+transparent background, no shadows, no ground, no perch, no text, no watermark.
 ```
