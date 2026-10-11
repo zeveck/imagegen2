@@ -73,6 +73,12 @@ failure cases changed. See
 ### Also
 
 - JSON output and history include token `usage` and `imagegen2Version`.
+- The README sample gallery is regenerated with `gpt-image-2.5-flare`, with
+  native-alpha showcase images and a Flare column in the reference-edit
+  comparison.
+- Dev container refreshed from github.com/zeveck/devcontainers (`gh`,
+  `glab`, `auth`, `dc`, Node 24, and agent sign-ins and history that survive
+  rebuilds).
 - Docs, all three agent skill folders, tests, and the live smoke test are
   updated.
 

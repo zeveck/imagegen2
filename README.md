@@ -66,9 +66,9 @@ $0.01-0.02 per image). The set is intentionally broad enough to reuse across
 |:------------:|:-------:|:----------:|
 | <img src="examples/images/isometric-grass-tile.png" width="220" alt="Isometric pixel art grass terrain tile"> | <img src="examples/images/settings-icon.png" width="220" alt="Flat vector settings gear icon"> | <img src="examples/images/forest-background.png" width="320" alt="Hand-painted fantasy forest background"> |
 
-Native transparency (`--background transparent`), straight from the model with
-no chroma-key cleanup. Soft edges like fire, smoke, glow, and feathers keep
-their partial alpha:
+Native transparency (`--background transparent`): the model's own alpha
+channel, with only imagegen2's light alpha cleanup and no chroma-key. Soft
+edges like fire, smoke, glow, and feathers keep their partial alpha:
 
 | Fire and smoke | Glow and sparks | Feathers |
 |:--------------:|:---------------:|:--------:|
