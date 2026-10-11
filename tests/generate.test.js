@@ -186,12 +186,15 @@ test('CLI version matches package.json and is date-based', () => {
 test('Claude plugin manifests match the release and point at the skill', () => {
   const root = path.resolve(__dirname, '..');
   const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
-  const plugin = JSON.parse(readFileSync(path.join(root, '.claude-plugin/plugin.json'), 'utf8'));
+  const plugin = JSON.parse(readFileSync(path.join(root, 'skills/.claude-plugin/plugin.json'), 'utf8'));
   const marketplace = JSON.parse(readFileSync(path.join(root, '.claude-plugin/marketplace.json'), 'utf8'));
   assert.equal(plugin.name, 'imagegen2');
   assert.equal(plugin.version, pkg.version);
   assert.equal(marketplace.name, 'imagegen2');
-  assert.deepEqual(marketplace.plugins.map((p) => [p.name, p.source]), [['imagegen2', '.']]);
+  assert.deepEqual(marketplace.plugins.map((p) => [p.name, p.source]), [['imagegen2', './skills']]);
+  assert.equal(plugin.skills, './imagegen2');
+  // The plugin is rooted at skills/, so an install copies only the skill.
+  assert.ok(!existsSync(path.join(root, '.claude-plugin/plugin.json')));
   assert.ok(!existsSync(path.join(root, '.claude/skills/imagegen2')), 'Claude skill moved to skills/imagegen2');
   const skill = readFileSync(path.join(root, 'skills/imagegen2/SKILL.md'), 'utf8');
   assert.ok(skill.includes('Bash(node ${CLAUDE_SKILL_DIR}/generate.cjs *)'));

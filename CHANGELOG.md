@@ -18,7 +18,8 @@ failure cases changed. See
 
 - imagegen2 is now a Claude Code plugin with its own marketplace:
   `/plugin install imagegen2 --marketplace zeveck/imagegen2`. Installed copies
-  update with `claude plugin update imagegen2@imagegen2`.
+  update with `claude plugin update imagegen2@imagegen2`. The plugin is
+  rooted at `skills/`, so an install copies only the skill, not the repository.
 - The Claude skill moved from `.claude/skills/imagegen2/` to
   `skills/imagegen2/`, and its `SKILL.md` runs the bundled CLI through
   `${CLAUDE_SKILL_DIR}`, so it works from a plugin install or a copied folder.

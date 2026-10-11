@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "imagegen2",
-      "source": ".",
+      "source": "./skills",
       "description": "Generate and edit game-oriented image assets with OpenAI GPT Image 2.5."
     }
   ]

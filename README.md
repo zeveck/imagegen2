@@ -156,17 +156,18 @@ zero-dependency CLI so each works when installed on its own.
 ```text
 cli/generate.cjs                   # canonical CLI
 cli/reference.md                   # canonical style/prompt reference
-.claude-plugin/plugin.json         # Claude Code plugin manifest
 .claude-plugin/marketplace.json    # single-plugin marketplace
+skills/.claude-plugin/plugin.json  # Claude Code plugin manifest (plugin root: skills/)
 skills/imagegen2/                  # Claude Code skill (plugin skill)
 .codex/skills/imagegen2/           # Codex skill
 .gemini/skills/imagegen2/          # Gemini skill
 ```
 
 After editing `cli/generate.cjs` or `cli/reference.md`, run `npm run sync` to
-copy them into the skill folders; `npm test` fails if they drift. When
-developing the Claude skill in this repo, load it with
-`claude --plugin-dir .`.
+copy them into the skill folders; `npm test` fails if they drift. The plugin is
+rooted at `skills/`, so an install copies only the skill, not the repository.
+When developing the Claude skill in this repo, load it with
+`claude --plugin-dir skills`.
 
 ## CLI
 
