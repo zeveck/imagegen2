@@ -85,7 +85,7 @@ failure cases changed. See
 - The README sample gallery is regenerated with `gpt-image-2.5-flare`, with
   native-alpha showcase images and a Flare column in the reference-edit
   comparison.
-- Dev container refreshed from github.com/zeveck/devcontainers (`gh`,
+- Dev container refreshed from github.com/zeveck/devcontainer-plus (`gh`,
   `glab`, `auth`, `dc`, Node 24). Agent history, memory, settings, and plugins
   survive rebuilds; sign-ins don't, and `dc volumes` manages the saved data.
 - Docs, all three agent skill folders, tests, and the live smoke test are
