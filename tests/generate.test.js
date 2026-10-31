@@ -179,7 +179,7 @@ for (const agentDir of ['.codex/skills/imagegen2', 'skills/imagegen2', '.gemini/
 test('CLI version matches package.json and is date-based', () => {
   const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
   assert.equal(IMAGEGEN2_VERSION, pkg.version);
-  assert.match(IMAGEGEN2_VERSION, /^20\d\d\.(1[0-2]|[1-9])\.([1-9]|[12]\d|3[01])$/);
+  assert.match(IMAGEGEN2_VERSION, /^20\d\d\.(1[0-2]|[1-9])\.([1-9]|[12]\d|3[01])(\.([2-9]|[1-9]\d+))?$/);
   assert.ok(readFileSync(path.resolve(__dirname, '../CHANGELOG.md'), 'utf8').includes(`## v${IMAGEGEN2_VERSION}`));
 });
 
