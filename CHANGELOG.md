@@ -7,6 +7,16 @@ so on (`v2026.10.10.2`).
 The running version is printed by `--version`, shown by `--help`, and reported
 as `imagegen2Version` in every JSON result and history entry.
 
+## v2026.11.1
+
+Fixes from a bug review ([#1](https://github.com/zeveck/imagegen2/issues/1)):
+
+- Running out of OpenAI credit (HTTP 429 `insufficient_quota`) now fails at
+  once with a clear message instead of retrying four times. anim8gen paid that
+  delay on every frame.
+- A blank key in a nearer `.env` (for example a copied `.env.example`) no
+  longer hides the real key in a parent folder's `.env`.
+
 ## v2026.10.11
 
 GPT Image 2.5 upgrade. Existing commands keep working; defaults and a few
