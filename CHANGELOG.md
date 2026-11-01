@@ -7,6 +7,16 @@ so on (`v2026.10.10.2`).
 The running version is printed by `--version`, shown by `--help`, and reported
 as `imagegen2Version` in every JSON result and history entry.
 
+## v2026.11.1.2
+
+Fixes from a second bug review ([#2](https://github.com/zeveck/imagegen2/issues/2)):
+
+- A `.env` line with spaces after a blank `KEY=` no longer swallows the next
+  line (Node 24). Before, a stray space could turn into a confusing
+  "check your API key" error.
+- A `.env` saved with a UTF-8 byte-order mark (some Windows editors do this)
+  no longer hides its first key.
+
 ## v2026.11.1
 
 Fixes from a bug review ([#1](https://github.com/zeveck/imagegen2/issues/1)):
