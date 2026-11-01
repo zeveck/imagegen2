@@ -24,6 +24,16 @@ const zlib = require("zlib");
 // overrides a variable that is already set, so the nearest value wins per
 // variable and an unrelated parent .env can't hide a key set elsewhere.
 // Blank values (e.g. a copied .env.example) are skipped for the same reason.
+// Before parsing, drop a UTF-8 BOM (some Windows editors write one; Node keeps
+// it in the first key) and spaces after a bare "KEY=" (Node 24's parser
+// otherwise reads the next line as that key's value).
+function readEnvFile(p) {
+  const text = fs.readFileSync(p, "utf8")
+    .replace(/^﻿/, "")
+    .replace(/^([ \t]*(?:export[ \t]+)?[^\s=#]+[ \t]*=)[ \t]+(?=\r?$)/gm, "$1");
+  return require("util").parseEnv(text);
+}
+
 (function loadEnv() {
   const tried = new Set();
   for (const start of [process.cwd(), __dirname]) {
@@ -35,7 +45,7 @@ const zlib = require("zlib");
       tried.add(p);
       try {
         if (!fs.existsSync(p)) continue;
-        const vars = require("util").parseEnv(fs.readFileSync(p, "utf8"));
+        const vars = readEnvFile(p);
         for (const [key, value] of Object.entries(vars)) {
           if (value !== "" && !(key in process.env)) process.env[key] = value;
         }

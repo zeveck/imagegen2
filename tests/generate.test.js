@@ -336,6 +336,29 @@ test('a blank value in a nearer .env (a copied .env.example) does not hide a par
   assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
 });
 
+test('a .env saved with a UTF-8 BOM still sets its first variable', () => {
+  const cwd = mkdtempSync(path.join(TEMP_DIR, 'env-bom-'));
+  writeFileSync(path.join(cwd, '.env'), '﻿IMAGEGEN2_MODEL=gpt-image-2\r\n');
+  const env = { ...process.env };
+  delete env.IMAGEGEN2_MODEL;
+  const r = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { cwd, env });
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
+});
+
+test('spaces after a blank KEY= in .env do not swallow the next line', () => {
+  for (const eol of ['\n', '\r\n']) {
+    const cwd = mkdtempSync(path.join(TEMP_DIR, 'env-space-'));
+    writeFileSync(path.join(cwd, '.env'), `OPENAI_ORGANIZATION= ${eol}IMAGEGEN2_MODEL=gpt-image-2${eol}`);
+    const env = { ...process.env };
+    delete env.IMAGEGEN2_MODEL;
+    delete env.OPENAI_ORGANIZATION;
+    const r = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { cwd, env });
+    assert.equal(r.status, 0, r.stdout);
+    assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2', JSON.stringify(eol));
+  }
+});
+
 test('--version prints only the version, and only on its own', () => {
   const r = run(['--version']);
   assert.equal(r.status, 0);
