@@ -23,6 +23,7 @@ const zlib = require("zlib");
 // user skills folder). Every .env found is loaded, nearest first; a file never
 // overrides a variable that is already set, so the nearest value wins per
 // variable and an unrelated parent .env can't hide a key set elsewhere.
+// Blank values (e.g. a copied .env.example) are skipped for the same reason.
 (function loadEnv() {
   const tried = new Set();
   for (const start of [process.cwd(), __dirname]) {
@@ -33,7 +34,11 @@ const zlib = require("zlib");
       if (tried.has(p)) continue;
       tried.add(p);
       try {
-        if (fs.existsSync(p)) process.loadEnvFile(p);
+        if (!fs.existsSync(p)) continue;
+        const vars = require("util").parseEnv(fs.readFileSync(p, "utf8"));
+        for (const [key, value] of Object.entries(vars)) {
+          if (value !== "" && !(key in process.env)) process.env[key] = value;
+        }
       } catch {}
     }
   }
@@ -1057,6 +1062,14 @@ async function fetchWithRetry(url, options, clientRequestId, timeoutMs) {
     // Billing/quota/verification — do NOT retry
     if (response.status === 402 || response.status === 403) {
       fail(`Access denied (HTTP ${response.status}): ${errorMessage}`, {
+        clientRequestId,
+        openaiRequestId: response.headers?.get?.("x-request-id") || null,
+      });
+    }
+
+    // Out of credits (429 insufficient_quota) — do NOT retry; waiting won't help
+    if (response.status === 429 && (body?.error?.code === "insufficient_quota" || body?.error?.type === "insufficient_quota")) {
+      fail(`Quota exceeded (HTTP 429): ${errorMessage}`, {
         clientRequestId,
         openaiRequestId: response.headers?.get?.("x-request-id") || null,
       });

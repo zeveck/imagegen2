@@ -323,6 +323,19 @@ test('a parent .env without the key does not hide a nearer one, and nearest wins
   assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
 });
 
+test('a blank value in a nearer .env (a copied .env.example) does not hide a parent value', () => {
+  const root = mkdtempSync(path.join(TEMP_DIR, 'env-blank-'));
+  const project = path.join(root, 'project');
+  mkdirSync(project, { recursive: true });
+  writeFileSync(path.join(root, '.env'), 'IMAGEGEN2_MODEL=gpt-image-2\n');
+  writeFileSync(path.join(project, '.env'), 'OPENAI_API_KEY=\nIMAGEGEN2_MODEL=\n');
+  const env = { ...process.env };
+  delete env.IMAGEGEN2_MODEL;
+  const r = run(['--dry-run', '--prompt', 'test', '--output', 'out.png'], { cwd: project, env });
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(parseJson(r.stdout).params.model, 'gpt-image-2');
+});
+
 test('--version prints only the version, and only on its own', () => {
   const r = run(['--version']);
   assert.equal(r.status, 0);
@@ -1269,6 +1282,25 @@ test('mocked native alpha WEBP output skips cleanup but succeeds', () => {
   const body = parseJson(r.stdout);
   assert.equal(body.postprocess.status, 'skipped');
   assert.equal(body.transparentMode, 'native-alpha');
+});
+
+test('mocked 429 insufficient_quota fails at once instead of retrying', () => {
+  const cwd = mkdtempSync(path.join(TEMP_DIR, 'mock-quota-'));
+  const started = Date.now();
+  const r = run(['--prompt', 'x', '--output', path.join(cwd, 'out.png'), '--no-history'], {
+    cwd,
+    nodeArgs: ['--import', MOCK_FETCH],
+    env: {
+      ...TEST_ENV,
+      OPENAI_API_KEY: 'test-key',
+      IMAGEGEN2_MOCK_STATUS: '429',
+      IMAGEGEN2_MOCK_BODY_JSON: JSON.stringify({ error: { message: 'You exceeded your current quota.', type: 'insufficient_quota', code: 'insufficient_quota' } }),
+    },
+  });
+  assert.notEqual(r.status, 0);
+  const body = parseJson(r.stdout);
+  assert.match(body.error, /^Quota exceeded \(HTTP 429\)/);
+  assert.ok(Date.now() - started < 900, `took ${Date.now() - started}ms; retries back off from 1s`);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
