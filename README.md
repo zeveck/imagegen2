@@ -150,8 +150,8 @@ and run the `gemini skills link` command against the local
 ### Repository Layout
 
 The repository ships one canonical CLI for development plus self-contained
-skill folders for each agent. The skill folders duplicate the tiny
-zero-dependency CLI so each works when installed on its own.
+skill folders for each agent. The skill folders duplicate the tiny CLI
+(no npm packages) so each works when installed on its own.
 
 ```text
 cli/generate.cjs                   # canonical CLI
