@@ -264,7 +264,7 @@ test('--dry-run does not require OPENAI_API_KEY', () => {
   assert.equal(body.success, true);
   assert.equal(body.dryRun, true);
   assert.equal(body.model, DEFAULT_MODEL);
-  assert.equal(DEFAULT_MODEL, 'gpt-image-2.5-flare');
+  assert.equal(DEFAULT_MODEL, 'gpt-image-2.6-flare');
   assert.equal(body.mode, 'generation');
   assert.equal(body.params.quality, 'low');
 });
@@ -314,7 +314,7 @@ test('a parent .env without the key does not hide a nearer one, and nearest wins
   const root = mkdtempSync(path.join(TEMP_DIR, 'env-layer-'));
   const project = path.join(root, 'project');
   mkdirSync(project, { recursive: true });
-  writeFileSync(path.join(root, '.env'), 'IMAGEGEN2_MODEL=gpt-image-1.5\nUNRELATED=1\n');
+  writeFileSync(path.join(root, '.env'), 'IMAGEGEN2_MODEL=gpt-image-2.5-flare\nUNRELATED=1\n');
   writeFileSync(path.join(project, '.env'), 'IMAGEGEN2_MODEL=gpt-image-2\n');
   const env = { ...process.env };
   delete env.IMAGEGEN2_MODEL;
@@ -442,10 +442,12 @@ test('default timeout is 300s, or 600s for xhigh/max', () => {
   assert.equal(parseJson(slow.stdout).timeoutSeconds, 600);
 });
 
-test('fallback-model checks quality against gpt-image-1.5', () => {
-  const r = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--background', 'transparent', '--transparent-mode', 'fallback-model', '--quality', 'xhigh']);
+test('removed fallback-model mode explains what to use instead', () => {
+  const r = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--background', 'transparent', '--transparent-mode', 'fallback-model']);
   assert.notEqual(r.status, 0);
-  assert.ok(r.stdout.includes('--quality xhigh is not supported by gpt-image-1.5'), r.stdout);
+  const body = parseJson(r.stdout);
+  assert.ok(body.error.includes('fallback-model was removed'), r.stdout);
+  assert.ok(body.error.includes('--transparent-mode chroma-key'), r.stdout);
 });
 
 test('model names are trimmed and lowercased; blank means latest', () => {
@@ -508,32 +510,21 @@ test('--transparent-mode reject refuses --background transparent', () => {
   assert.ok(r.stdout.includes('refused by --transparent-mode reject'));
 });
 
-test('--background transparent fallback-model dry-runs as gpt-image-1.5', () => {
-  const r = run([
-    '--dry-run',
-    '--prompt', 'test',
-    '--output', 't.png',
-    '--background', 'transparent',
-    '--transparent-mode', 'fallback-model',
-  ]);
-  assert.equal(r.status, 0, r.stdout);
-  const body = parseJson(r.stdout);
-  assert.equal(body.model, 'gpt-image-1.5');
-  assert.equal(body.fallbackModel, 'gpt-image-1.5');
-  assert.equal(body.params.model, 'gpt-image-1.5');
-  assert.equal(body.params.background, 'transparent');
+test('--complexity is sent on GPT Image 2.6 requests', () => {
+  const gen = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--complexity', 'low']);
+  assert.equal(gen.status, 0, gen.stdout);
+  assert.equal(parseJson(gen.stdout).params.complexity, 'low');
+  const plain = run(['--dry-run', '--prompt', 'test', '--output', 't.png']);
+  assert.equal(parseJson(plain.stdout).params.complexity, undefined);
 });
 
-test('--background transparent fallback-model rejects JPEG', () => {
-  const r = run([
-    '--dry-run',
-    '--prompt', 'test',
-    '--output', 't.jpg',
-    '--background', 'transparent',
-    '--transparent-mode', 'fallback-model',
-  ]);
-  assert.notEqual(r.status, 0);
-  assert.ok(r.stdout.includes('JPEG does not support transparency'));
+test('--complexity rejects bad values and models without it', () => {
+  const bad = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--complexity', 'extreme']);
+  assert.notEqual(bad.status, 0);
+  assert.ok(bad.stdout.includes('Invalid --complexity'), bad.stdout);
+  const old = run(['--dry-run', '--prompt', 'test', '--output', 't.png', '--model', 'gpt-image-2.5-flare', '--complexity', 'low']);
+  assert.notEqual(old.status, 0);
+  assert.ok(old.stdout.includes('--complexity is not supported by gpt-image-2.5-flare'), old.stdout);
 });
 
 test('--background transparent chroma-key uses the default model as an opaque PNG request', () => {
@@ -632,7 +623,7 @@ test('--transparent-mode without transparent background exits non-zero', () => {
     '--dry-run',
     '--prompt', 'test',
     '--output', 't.png',
-    '--transparent-mode', 'fallback-model',
+    '--transparent-mode', 'chroma-key',
   ]);
   assert.notEqual(r.status, 0);
   assert.ok(r.stdout.includes('only applies when --background transparent'));

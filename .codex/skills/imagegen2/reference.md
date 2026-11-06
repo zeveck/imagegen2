@@ -5,21 +5,28 @@ Supplementary style presets, prompt templates, and practical guidance for the
 
 ## Model Notes
 
-`imagegen2` defaults to OpenAI GPT Image 2.5 Flare (`gpt-image-2.5-flare`),
+`imagegen2` defaults to OpenAI GPT Image 2.6 Flare (`gpt-image-2.6-flare`),
 which follows OpenAI's latest Flare snapshot.
 
 To keep a whole project on one exact model, set `IMAGEGEN2_MODEL` in the
-project's `.env`, for example `IMAGEGEN2_MODEL=gpt-image-2.5-flare-2026-09-08`.
+project's `.env`, for example `IMAGEGEN2_MODEL=gpt-image-2.5-flare-2026-09-08` (2.6 has no
+dated snapshots yet).
 `IMAGEGEN2_MODEL=latest` (or leaving it unset) tracks the default.
 `--model` still overrides it for a single command; `--model latest` uses the
 default even in a pinned project.
 
 | Model | Use it for | Notes |
 |---|---|---|
-| `gpt-image-2.5-flare` (default) | Almost everything | Fast (~10-15s at medium), native transparency |
-| `gpt-image-2.5-sunburst` | Detailed final art | Same token price as Flare, ~1.6x slower |
-| `gpt-image-2` | Matching assets made before the upgrade | No native transparency; no `xhigh`/`max`; ~3x slower and ~4x the cost of Flare at medium |
-| `gpt-image-1.5` | Legacy native-alpha fallback | Used by `--transparent-mode fallback-model` |
+| `gpt-image-2.6-flare` (default) | Almost everything | Fast (~7s at low or medium), native transparency, `--complexity` |
+| `gpt-image-2.6-sunburst` | Detailed final art | Same token price as 2.6 Flare, slower |
+| `gpt-image-2.5-flare` | Cheap drafts and big batches | About 4x cheaper per image than 2.6 Flare (196 vs 824 output tokens at low), a little lower quality |
+| `gpt-image-2.5-sunburst` | Detailed 2.5 art | Same token price as 2.5 Flare, ~1.6x slower |
+| `gpt-image-2` | Matching assets made before the 2.5 upgrade | No native transparency; no `xhigh`/`max` |
+
+`--complexity low|medium|high` (GPT Image 2.6 only; the API defaults to
+`high`) controls how much the model elaborates. OpenAI says higher values can
+add latency and unwanted changes, so try `low` when an edit drifts from its
+reference. It did not change the token count in testing.
 
 Strengths:
 
@@ -156,7 +163,7 @@ Use larger sizes intentionally. They cost more and may take longer.
 - `low`: exploration, batches, first drafts
 - `medium`: good single assets and selected variants
 - `high`: final/keeper images, hero art, detailed backgrounds
-- `xhigh`, `max`: GPT Image 2.5 only. Extra detail for hero art; Flare
+- `xhigh`, `max`: GPT Image 2.5 and 2.6 only. Extra detail for hero art; Flare
   `max` costs about as much as `gpt-image-2` at `high` and is much slower
   than Flare `high`
 - `auto`: when the prompt itself should drive the tradeoff
@@ -176,7 +183,7 @@ calculator. Avoid hardcoding stale price promises into user-facing output.
 ## Transparency Tips
 
 - `--background transparent` uses the model's own alpha channel on GPT Image
-  2.5 (`--transparent-mode auto`, the default). This is the best choice for
+  2.5 and 2.6 (`--transparent-mode auto`, the default). This is the best choice for
   most sprites, icons, and effects, and the only good choice for fire, smoke,
   glow, fur, and other soft edges, which chroma-key cannot cut cleanly.
 - Ask for the subject "isolated on a transparent background, no shadows, no
@@ -200,6 +207,4 @@ calculator. Avoid hardcoding stale price promises into user-facing output.
   `--chroma-tolerance` conservative. The default is `24`; valid values are
   `0` through `442`.
 - `gpt-image-2` has no native transparency; with that model use chroma-key.
-- `--transparent-mode fallback-model` (native alpha via `gpt-image-1.5`) is
-  kept for compatibility; GPT Image 2.5 native alpha is better.
 - Avoid JPEG for transparency.

@@ -1,6 +1,6 @@
 ---
 name: imagegen2
-description: Generate or edit game-oriented raster assets using OpenAI GPT Image 2.5 (gpt-image-2.5-flare by default) through the bundled zero-dependency CLI. Use for sprites, tiles, icons, portraits, UI assets, backgrounds, reference-image edits, and iterative visual variants saved into the project.
+description: Generate or edit game-oriented raster assets using OpenAI GPT Image 2.6 (gpt-image-2.6-flare by default) through the bundled zero-dependency CLI. Use for sprites, tiles, icons, portraits, UI assets, backgrounds, reference-image edits, and iterative visual variants saved into the project.
 ---
 
 # ImageGen2 for Gemini
@@ -21,10 +21,13 @@ Recommended workflow:
 4. Run `--dry-run` for validation when using reference images or unusual sizes.
 5. Run the CLI, parse JSON stdout, and report the saved path.
 
-The default model is `gpt-image-2.5-flare`, or the project's `IMAGEGEN2_MODEL`
+The default model is `gpt-image-2.6-flare`, or the project's `IMAGEGEN2_MODEL`
 from `.env` when set. Use
-`--model gpt-image-2.5-sunburst` for slower, more detailed finals. Quality
-levels `xhigh` and `max` are available on GPT Image 2.5 models.
+`--model gpt-image-2.6-sunburst` for slower, more detailed finals, or
+`--model gpt-image-2.5-flare` when cost matters (about 4x cheaper per image).
+Quality levels `xhigh` and `max` are available on GPT Image 2.5 and 2.6
+models. `--complexity low|medium|high` (2.6 only, API default high): try `low`
+when an edit drifts from its reference.
 
 For transparent sprites, icons, and effects, request native alpha:
 
@@ -50,9 +53,6 @@ drifted key color in the image corners), alpha-bleeds hidden RGB, and can
 suppress strongly key-colored visible edge pixels. Disclose that this
 transparency comes from local chroma-key cleanup rather than native model
 alpha.
-
-`--transparent-mode fallback-model` (native alpha via `gpt-image-1.5`) is
-kept for compatibility only.
 
 Reference images use repeatable `--image <path>` flags. Verify each path before
 invoking the CLI.

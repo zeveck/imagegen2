@@ -1,19 +1,22 @@
 # Migrating from zeveck/imagegen to imagegen2
 
 `imagegen2` is based on `github.com/zeveck/imagegen`, but targets OpenAI
-GPT Image 2.5 (`gpt-image-2.5-flare` by default) and ships installable skill
+GPT Image 2.6 (`gpt-image-2.6-flare` by default) and ships installable skill
 folders for Codex, Claude Code, and Gemini.
+
+The old `imagegen` no longer works: OpenAI shut down `gpt-image-1` on
+2026-10-23, and the repository is archived.
 
 ## Main Changes
 
 | Old `imagegen` | New `imagegen2` |
 |----------------|-----------------|
 | `.claude/skills/imagegen/generate.cjs` | `cli/generate.cjs` for repo development, or the bundled `generate.cjs` in the installed `imagegen2` skill folder |
-| default model `gpt-image-1` | default model `gpt-image-2.5-flare` |
+| default model `gpt-image-1` | default model `gpt-image-2.6-flare` |
 | `.imagegen-history.jsonl` | `.imagegen2-history.jsonl` |
 | fixed legacy sizes | flexible GPT Image 2.x sizes |
 | `--input-fidelity high|low` | unsupported; GPT Image 2.x uses high fidelity automatically |
-| `--background transparent` directly | still works directly, with native alpha from GPT Image 2.5; `--transparent-mode chroma-key` is available for local key-color cleanup |
+| `--background transparent` directly | still works directly, with native alpha from GPT Image 2.6; `--transparent-mode chroma-key` is available for local key-color cleanup |
 
 ## Command Examples
 
@@ -42,7 +45,7 @@ node .claude/skills/imagegen/generate.cjs \
   --background transparent
 ```
 
-New transparent output is the same command, now using GPT Image 2.5 native
+New transparent output is the same command, now using GPT Image 2.6 native
 alpha:
 
 ```bash
@@ -95,6 +98,19 @@ node cli/generate.cjs \
   --output "./assets/items/sword.png" \
   --size 2048x1152
 ```
+
+## Upgrading to v2026.11.6 (GPT Image 2.6)
+
+imagegen2 v2026.11.6 switches the default model from `gpt-image-2.5-flare` to
+`gpt-image-2.6-flare`. Commands keep working, with two changes:
+
+- Each image costs about 4x more (at `--quality low`, 824 output tokens against
+  196). To keep the old model and price, add
+  `IMAGEGEN2_MODEL=gpt-image-2.5-flare` to the project's `.env`. Do the same
+  to keep an asset set made with 2.5 consistent.
+- `--transparent-mode fallback-model` now fails: it used `gpt-image-1.5`, which
+  OpenAI shuts down on 2026-12-01. Drop the flag to get native alpha, or use
+  `--transparent-mode chroma-key`.
 
 ## Upgrading from imagegen2 0.1.0 (gpt-image-2) to v2026.10.11
 

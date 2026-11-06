@@ -7,6 +7,24 @@ so on (`v2026.10.10.2`).
 The running version is printed by `--version`, shown by `--help`, and reported
 as `imagegen2Version` in every JSON result and history entry.
 
+## v2026.11.6
+
+- The default model is now `gpt-image-2.6-flare` (released by OpenAI on
+  2026-11-04). In a side-by-side test against `gpt-image-2.5-flare` it gave
+  clearly better sprites and pixel art (2.6 at low quality beat 2.5 at
+  medium), kept a character's design better across an edit, made clean
+  native transparent backgrounds, and was faster (about 7 s against 10 s).
+- **It costs more per image.** At the default `--quality low`, 2.6 Flare
+  returned 824 output tokens against 196 for 2.5 Flare (about $0.025 against
+  $0.006 per 1024x1024 image); at `medium`, 1,449 against 439. To keep the old
+  price, set `IMAGEGEN2_MODEL=gpt-image-2.5-flare` in `.env`.
+- New `--complexity low|medium|high` for GPT Image 2.6 models (the API default
+  is high). OpenAI says lower values can make fewer unwanted changes in edits.
+  It did not change the token count in testing.
+- `--transparent-mode fallback-model` is removed. It switched to
+  `gpt-image-1.5`, which OpenAI shuts down on 2026-12-01. It now fails with a
+  message pointing at native alpha (the default) or `chroma-key`.
+
 ## v2026.11.1.2
 
 Fixes from a second bug review ([#2](https://github.com/zeveck/imagegen2/issues/2)):

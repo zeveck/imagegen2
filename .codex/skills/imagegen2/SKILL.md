@@ -1,6 +1,6 @@
 ---
 name: imagegen2
-description: Generate or edit game-oriented raster assets using OpenAI GPT Image 2.5 (gpt-image-2.5-flare by default) through a bundled zero-dependency CLI. Use for sprites, tiles, icons, portraits, UI assets, backgrounds, reference-image edits, and iterative visual variants when the output should be a bitmap asset saved into the project.
+description: Generate or edit game-oriented raster assets using OpenAI GPT Image 2.6 (gpt-image-2.6-flare by default) through a bundled zero-dependency CLI. Use for sprites, tiles, icons, portraits, UI assets, backgrounds, reference-image edits, and iterative visual variants when the output should be a bitmap asset saved into the project.
 ---
 
 # ImageGen2
@@ -87,11 +87,12 @@ node /path/to/imagegen2-skill/generate.cjs \
 |-----------|--------|---------|-------|
 | `--prompt` | string | required | Exact prompt sent to the image model |
 | `--output` | `.png`, `.jpg`, `.jpeg`, `.webp` path | required | Parent directory is created automatically |
-| `--model` | model id | `$IMAGEGEN2_MODEL`, else `gpt-image-2.5-flare` | `gpt-image-2.5-sunburst` for slower, more detailed finals; `gpt-image-2` only to match pre-2.5 assets |
+| `--model` | model id | `$IMAGEGEN2_MODEL`, else `gpt-image-2.6-flare` | `gpt-image-2.6-sunburst` for slower, more detailed finals; `gpt-image-2.5-flare` when cost matters (about 4x cheaper per image); `gpt-image-2` only to match pre-2.5 assets |
 | `--size` | `auto` or valid `WxH` | `1024x1024` | Edges <=3840, multiples of 16, ratio <=3:1 |
-| `--quality` | `low`, `medium`, `high`, `xhigh`, `max`, `auto` | `low` | Use low for drafts, high for keepers; `xhigh`/`max` are GPT Image 2.5 only |
-| `--background` | `auto`, `opaque`, `transparent` | `auto` | Transparent uses native alpha on GPT Image 2.5 |
-| `--transparent-mode` | `auto`, `native-alpha`, `chroma-key`, `fallback-model`, `reject` | `auto` | `auto` uses native alpha when the model supports it; `chroma-key` performs local PNG cleanup on `--model` output |
+| `--quality` | `low`, `medium`, `high`, `xhigh`, `max`, `auto` | `low` | Use low for drafts, high for keepers; `xhigh`/`max` are GPT Image 2.5 and 2.6 only |
+| `--complexity` | `low`, `medium`, `high` | API default `high` | GPT Image 2.6 only; try `low` when an edit drifts from its reference |
+| `--background` | `auto`, `opaque`, `transparent` | `auto` | Transparent uses native alpha on GPT Image 2.5 and 2.6 |
+| `--transparent-mode` | `auto`, `native-alpha`, `chroma-key`, `reject` | `auto` | `auto` uses native alpha when the model supports it; `chroma-key` performs local PNG cleanup on `--model` output |
 | `--no-alpha-cleanup` | flag | false | Keep raw model alpha (skip snapping near-opaque/near-clear alpha) |
 | `--timeout` | seconds | `300` (`600` for `xhigh`/`max`) | Per API attempt; timed-out requests are not retried |
 | `--chroma-key` | `#rrggbb` | `#00ff00` | Key color for chroma-key mode |
@@ -119,7 +120,7 @@ not use `--input-fidelity`; the API and CLI reject it.
 ## Transparent Backgrounds
 
 `--background transparent` uses the model's native alpha channel on GPT Image
-2.5 (the default `--transparent-mode auto`). Prefer it for transparent sprites,
+2.5 and 2.6 (the default `--transparent-mode auto`). Prefer it for transparent sprites,
 icons, and effects; it is clearly better than chroma-key for fire, smoke, glow,
 fur, and other soft edges. Ask for the subject "isolated on a transparent
 background, no shadows, no ground". Native-alpha PNGs get a light local cleanup
@@ -138,7 +139,6 @@ Other modes:
   color in the image corners (reported as `postprocess.detectedKey`) and fails
   if 3 or more of the 4 corners stay opaque. Tell the user that transparency is local
   chroma-key cleanup rather than native model alpha.
-- `fallback-model`: legacy native alpha via `gpt-image-1.5`.
 - `reject`: refuse transparent output.
 
 Do not use JPEG for transparent output. Chroma-key mode and alpha cleanup

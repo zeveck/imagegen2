@@ -1,24 +1,26 @@
 # imagegen2
 
 Generate and edit game-oriented image assets from Codex, Claude Code, Gemini,
-or a terminal using OpenAI GPT Image 2.5.
+or a terminal using OpenAI GPT Image 2.6.
 
 `imagegen2` is based on `github.com/zeveck/imagegen`, updated for GPT Image 2.x
 and packaged as self-contained Agent Skills for multiple coding agents. Use it
 for sprites, tiles, item icons, UI elements, portraits, backgrounds, concept
 art, and reference-image variants.
 
-## What's New in v2026.10.11
+## What's New in v2026.11.6
 
-- Defaults to OpenAI GPT Image 2.5 Flare: about 3x faster and 4x cheaper than
-  `gpt-image-2` at the same quality setting.
-- `--background transparent` now uses native model alpha, with clean soft edges
-  on fire, smoke, glow, and fur.
-- New `xhigh`/`max` quality, `gpt-image-2.5-sunburst` for detailed finals, and
-  `IMAGEGEN2_MODEL` to pin a project's model.
+- Defaults to OpenAI GPT Image 2.6 Flare: better sprites and pixel art than
+  2.5 Flare, a character's design holds better across edits, and it's faster.
+- It costs about 4x more per image than 2.5 Flare (about $0.025 against $0.006
+  at the default low quality, 1024x1024). Set
+  `IMAGEGEN2_MODEL=gpt-image-2.5-flare` to keep the old price.
+- New `--complexity low|medium|high` on GPT Image 2.6 models.
+- `--transparent-mode fallback-model` is gone: it used `gpt-image-1.5`, which
+  OpenAI shuts down on 2026-12-01. Native transparency is the default anyway.
 
 See the [changelog](CHANGELOG.md) for behavior changes and the
-[upgrade notes](docs/migration-from-imagegen.md#upgrading-from-imagegen2-010-gpt-image-2-to-v20261011).
+[upgrade notes](docs/migration-from-imagegen.md#upgrading-to-v2026116-gpt-image-26).
 
 ## Choosing a Skill
 
@@ -28,8 +30,8 @@ identical.
 
 | Skill | Back end | Good fit | Tradeoffs |
 |-------|----------|----------|-----------|
-| [`imagegen`](https://github.com/zeveck/imagegen) | OpenAI `gpt-image-1` | Classic game assets, direct transparent PNG/WebP sprites and icons | Older OpenAI image model, legacy size set |
-| `imagegen2` | OpenAI GPT Image 2.5 (`gpt-image-2.5-flare` default) | Current OpenAI image path, flexible sizes up to 4K-class outputs, high-fidelity edits, native transparency with soft edges | `xhigh`/`max` quality is slow |
+| [`imagegen`](https://github.com/zeveck/imagegen) (archived) | OpenAI `gpt-image-1` | Nothing now: OpenAI shut `gpt-image-1` down on 2026-10-23 | Use `imagegen2` instead |
+| `imagegen2` | OpenAI GPT Image 2.6 (`gpt-image-2.6-flare` default) | Current OpenAI image path, flexible sizes up to 4K-class outputs, high-fidelity edits, native transparency with soft edges | `xhigh`/`max` quality is slow |
 | [`nanogen`](https://github.com/zeveck/nanogen) | Google Gemini / Nano Banana image models | Rich style catalog, natural-language edits, multi-image composition, multi-turn refinement | No native alpha output; often returns JPEG and uses chromakey/post-processing for transparent-style assets |
 
 ## Requirements
@@ -58,8 +60,8 @@ persists, create a new API key for that verified organization/project.
 ## Benchmark Gallery
 
 These outputs use the prompts in [examples/prompts.md](examples/prompts.md),
-generated with the default `gpt-image-2.5-flare` at `--quality medium` (about
-$0.01-0.02 per image). The set is intentionally broad enough to reuse across
+generated with `gpt-image-2.5-flare`, the default before v2026.11.6, at
+`--quality medium` (about $0.01-0.02 per image). The set is intentionally broad enough to reuse across
 `imagegen`, `imagegen2`, and `nanogen` for apples-to-apples comparison.
 
 | Sprite | Item icon | Tactical unit |
@@ -213,14 +215,16 @@ to match the input image's format and size and to include an alpha channel.
 
 | Model | Use it for |
 |-------|------------|
-| `gpt-image-2.5-flare` (default) | Almost everything: fast, native transparency, `xhigh`/`max` quality |
-| `gpt-image-2.5-sunburst` | Slower, more detailed final art at the same token price |
+| `gpt-image-2.6-flare` (default) | Almost everything: fast, native transparency, `xhigh`/`max` quality, `--complexity` |
+| `gpt-image-2.6-sunburst` | Slower, more detailed final art at the same token price |
+| `gpt-image-2.5-flare` | About 4x cheaper per image than 2.6 Flare, a little lower quality; matching assets made with v2026.10.11 to v2026.11.1.2 |
+| `gpt-image-2.5-sunburst` | Detailed 2.5 art |
 | `gpt-image-2` | Matching assets made before the 2.5 upgrade (no native transparency) |
 
-The default follows OpenAI's latest Flare snapshot. To keep a whole project on
+The default follows OpenAI's latest Flare model. To keep a whole project on
 one exact model, set `IMAGEGEN2_MODEL` in the project's `.env`, for example
-`IMAGEGEN2_MODEL=gpt-image-2.5-flare-2026-09-08`.
-`IMAGEGEN2_MODEL=latest` (or leaving it unset) tracks the default.
+`IMAGEGEN2_MODEL=gpt-image-2.5-flare-2026-09-08` (OpenAI hasn't published dated
+2.6 snapshots yet). `IMAGEGEN2_MODEL=latest` (or leaving it unset) tracks the default.
 `--model` still overrides it for a single command; `--model latest` uses the
 default even in a pinned project.
 
@@ -255,7 +259,7 @@ OpenAI docs. Use 4K sizes intentionally.
 ## Transparent Backgrounds
 
 `--background transparent` uses the model's native alpha channel on GPT Image
-2.5. No other flag is needed:
+2.5 and 2.6. No other flag is needed:
 
 ```bash
 node cli/generate.cjs \
@@ -280,7 +284,6 @@ the hidden backdrop. Pass `--no-alpha-cleanup` to keep raw model alpha.
   then remove that key color locally from PNG output. Produces hard binary
   alpha. Use it for pipelines built around it, or with `gpt-image-2`, which has
   no native alpha.
-- `fallback-model`: legacy native alpha via `gpt-image-1.5`.
 - `reject`: refuse transparent output.
 
 ```bash
@@ -315,16 +318,17 @@ JPEG cannot be used for transparent output.
 --prompt <string>
 --output <path>
 --size <auto|WxH>
---quality <low|medium|high|xhigh|max|auto>   # xhigh/max: GPT Image 2.5 only
+--quality <low|medium|high|xhigh|max|auto>   # xhigh/max: GPT Image 2.5 and 2.6 only
+--complexity <low|medium|high>   # GPT Image 2.6 only; API default high
 --background <auto|opaque|transparent>
---transparent-mode <auto|native-alpha|chroma-key|fallback-model|reject>
+--transparent-mode <auto|native-alpha|chroma-key|reject>
 --no-alpha-cleanup               # keep raw native alpha
 --chroma-key <#rrggbb>            # chroma-key mode only, default #00ff00
 --chroma-tolerance <0-442>        # chroma-key RGB distance, default 24
 --output-compression <0-100>     # JPEG/WebP only
 --image <path>                   # repeatable, max 16
 --mask <png-path>
---model <id|latest>              # default $IMAGEGEN2_MODEL, else latest (gpt-image-2.5-flare)
+--model <id|latest>              # default $IMAGEGEN2_MODEL, else latest (gpt-image-2.6-flare)
 --timeout <seconds>              # per attempt; default 300, 600 for xhigh/max
 --client-request-id <id>
 --dry-run
@@ -367,10 +371,16 @@ Model, size, quality, transparency, and input-fidelity behavior are based on the
 current
 [OpenAI Image generation guide](https://developers.openai.com/api/docs/guides/image-generation)
 and the
+[GPT-Image-2.6 Flare](https://developers.openai.com/api/docs/models/gpt-image-2.6-flare),
+[GPT-Image-2.6 Sunburst](https://developers.openai.com/api/docs/models/gpt-image-2.6-sunburst),
 [GPT-Image-2.5 Flare](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare)
 and
 [GPT-Image-2.5 Sunburst](https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst)
 model pages.
+
+OpenAI's 2.6 docs don't mention transparency. Live tests on 2026-11-06
+confirmed that `gpt-image-2.6-flare` returns real alpha for
+`background: "transparent"`, on generations and edits.
 
 Live probes on 2026-10-09 confirmed that both GPT Image 2.5 models return real
 alpha for `background: "transparent"` and reject `input_fidelity` with HTTP 400.

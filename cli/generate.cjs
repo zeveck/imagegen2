@@ -57,9 +57,9 @@ function readEnvFile(p) {
 // Alias, so installs keep working when OpenAI retires a snapshot. Projects
 // that need a fixed model set IMAGEGEN2_MODEL (e.g. in .env) or pass --model.
 // Date-based release version; keep in sync with package.json (tests check).
-const IMAGEGEN2_VERSION = "2026.11.1.2";
+const IMAGEGEN2_VERSION = "2026.11.6";
 
-const DEFAULT_MODEL = "gpt-image-2.5-flare";
+const DEFAULT_MODEL = "gpt-image-2.6-flare";
 
 // "latest" (in IMAGEGEN2_MODEL or --model) means the default alias above.
 function resolveModel(model) {
@@ -95,15 +95,17 @@ Options:
                           2048x2048, 2048x1152, 3840x2160, 2160x3840
                           (default: 1024x1024)
   --quality <quality>     low | medium | high | auto, plus xhigh | max on
-                          GPT Image 2.5 models (default: low)
+                          GPT Image 2.5 and 2.6 models (default: low)
+  --complexity <level>    low | medium | high (GPT Image 2.6 only; the API
+                          defaults to high). Lower can mean fewer unwanted
+                          changes in edits. Does not change cost.
   --background <bg>       transparent | opaque | auto (default: auto)
   --transparent-mode <m>  How --background transparent is produced (default: auto)
                           auto: model alpha when the model supports it
-                            (GPT Image 2.5); otherwise an error naming options.
+                            (GPT Image 2.5 and 2.6); otherwise an error.
                           native-alpha: require the model's own alpha channel.
                           chroma-key: request an opaque solid key background
                             from --model, then remove it locally (PNG only).
-                          fallback-model: native alpha via gpt-image-1.5.
                           reject: refuse --background transparent.
   --no-alpha-cleanup      Keep model alpha exactly as returned. By default,
                           native-alpha PNGs snap near-opaque alpha (>=240) to
@@ -114,8 +116,9 @@ Options:
   --output-compression <n> JPEG/WEBP compression, 0-100. Not valid for PNG.
   --model <model>         Model name, or "latest" for ${DEFAULT_MODEL}
                           (default: $IMAGEGEN2_MODEL, else latest)
-                          Also: gpt-image-2.5-sunburst (slower, more detail),
-                          gpt-image-2, gpt-image-1.5
+                          Also: gpt-image-2.6-sunburst (slower, more detail),
+                          gpt-image-2.5-flare (about 4x cheaper),
+                          gpt-image-2.5-sunburst, gpt-image-2
   --timeout <seconds>     Per-attempt timeout (default: 300; 600 for xhigh/max)
   --client-request-id <id> Override generated request ID
   --dry-run               Validate and print request summary without API call
@@ -144,7 +147,7 @@ Examples:
   node generate.cjs --prompt "Icon on a plain background" --output "./icon.png" --background opaque
   node generate.cjs --prompt "Dragon sprite" --output "./dragon.png" --background transparent
   node generate.cjs --prompt "Pixel sprite" --output "./sprite.png" --background transparent --transparent-mode chroma-key --chroma-key "#ff00ff"
-  node generate.cjs --prompt "Detailed hero art" --output "./hero.png" --model gpt-image-2.5-sunburst --quality high
+  node generate.cjs --prompt "Detailed hero art" --output "./hero.png" --model gpt-image-2.6-sunburst --quality high
   node generate.cjs --prompt "Make it blue" --output "./edit.png" --image "./orig.png"
   node generate.cjs --prompt "Match this style" --output "./new.png" --image "./ref1.png" --image "./ref2.png"
 `.trim());
@@ -187,7 +190,7 @@ function parseArgs(argv) {
     quality: "low",
     background: "auto",
     model: process.env.IMAGEGEN2_MODEL || "latest",
-    fallbackModel: null,
+    complexity: null,
     transparentMode: "auto",
     alphaCleanup: true,
     timeoutSeconds: null,
@@ -236,6 +239,9 @@ function parseArgs(argv) {
         break;
       case "--chroma-tolerance":
         args.chromaTolerance = requireArgValue(flag, argv, ++i);
+        break;
+      case "--complexity":
+        args.complexity = requireArgValue(flag, argv, ++i);
         break;
       case "--model":
         args.model = requireArgValue(flag, argv, ++i);
@@ -288,19 +294,20 @@ function parseArgs(argv) {
 const BASE_QUALITIES = ["low", "medium", "high", "auto"];
 const EXTENDED_QUALITIES = ["low", "medium", "high", "xhigh", "max", "auto"];
 const VALID_BACKGROUNDS = new Set(["transparent", "opaque", "auto"]);
-const VALID_TRANSPARENT_MODES = new Set(["auto", "native-alpha", "chroma-key", "fallback-model", "reject"]);
+const VALID_TRANSPARENT_MODES = new Set(["auto", "native-alpha", "chroma-key", "reject"]);
+const VALID_COMPLEXITIES = new Set(["low", "medium", "high"]);
 
 // Known model families. Unknown models are passed through permissively so a
 // new OpenAI model is usable before this table learns about it.
 const MODEL_PROFILES = [
+  { pattern: /^gpt-image-2\.6-/, family: "gpt-image-2.6", qualities: EXTENDED_QUALITIES, nativeAlpha: true, complexity: true },
   { pattern: /^gpt-image-2\.5-/, family: "gpt-image-2.5", qualities: EXTENDED_QUALITIES, nativeAlpha: true },
   { pattern: /^gpt-image-2(-|$)/, family: "gpt-image-2", qualities: BASE_QUALITIES, nativeAlpha: false },
-  { pattern: /^gpt-image-1/, family: "gpt-image-1", qualities: BASE_QUALITIES, nativeAlpha: true },
 ];
 
 function modelProfile(model) {
   return MODEL_PROFILES.find((profile) => profile.pattern.test(model)) ||
-    { family: null, qualities: EXTENDED_QUALITIES, nativeAlpha: true };
+    { family: null, qualities: EXTENDED_QUALITIES, nativeAlpha: true, complexity: true };
 }
 const VALID_EXTENSIONS = { ".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".webp": "webp" };
 const VALID_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
@@ -364,18 +371,21 @@ function validate(args) {
   validateSize(args.size);
   if (!VALID_BACKGROUNDS.has(args.background))
     fail(`Invalid --background "${args.background}". Must be one of: ${[...VALID_BACKGROUNDS].join(", ")}`);
+  if (args.transparentMode === "fallback-model")
+    fail(`--transparent-mode fallback-model was removed: it used gpt-image-1.5, which OpenAI shuts down on 2026-12-01. ${DEFAULT_MODEL} makes native transparent backgrounds (--transparent-mode auto), or use --transparent-mode chroma-key.`);
   if (!VALID_TRANSPARENT_MODES.has(args.transparentMode))
     fail(`Invalid --transparent-mode "${args.transparentMode}". Must be one of: ${[...VALID_TRANSPARENT_MODES].join(", ")}`);
-  // Settle the request model before anything that depends on it.
-  if (args.background === "transparent" && args.transparentMode === "fallback-model") {
-    args.fallbackModel = "gpt-image-1.5";
-    args.model = "gpt-image-1.5";
-  }
   const profile = modelProfile(args.model);
   if (!EXTENDED_QUALITIES.includes(args.quality))
     fail(`Invalid --quality "${args.quality}". Must be one of: ${EXTENDED_QUALITIES.join(", ")}`);
   if (!profile.qualities.includes(args.quality))
-    fail(`--quality ${args.quality} is not supported by ${args.model}. Use ${profile.qualities.join(", ")}, or a GPT Image 2.5 model.`);
+    fail(`--quality ${args.quality} is not supported by ${args.model}. Use ${profile.qualities.join(", ")}, or a GPT Image 2.5 or 2.6 model.`);
+  if (args.complexity !== null) {
+    if (!VALID_COMPLEXITIES.has(args.complexity))
+      fail(`Invalid --complexity "${args.complexity}". Must be one of: ${[...VALID_COMPLEXITIES].join(", ")}`);
+    if (!profile.complexity)
+      fail(`--complexity is not supported by ${args.model}. Use a GPT Image 2.6 model such as ${DEFAULT_MODEL}.`);
+  }
   if (args.timeoutSeconds !== null) {
     if (!/^[0-9]+$/.test(args.timeoutSeconds) || Number(args.timeoutSeconds) < 1 || Number(args.timeoutSeconds) > MAX_TIMEOUT_SECONDS) {
       fail(`Invalid --timeout "${args.timeoutSeconds}". Must be a whole number of seconds from 1 to ${MAX_TIMEOUT_SECONDS}.`);
@@ -409,15 +419,15 @@ function validate(args) {
     }
     if (args.transparentMode === "auto") {
       if (!profile.nativeAlpha) {
-        fail(`${args.model} does not support native transparent backgrounds. Use a GPT Image 2.5 model such as ${DEFAULT_MODEL} (native alpha), or --transparent-mode chroma-key for local PNG cleanup.`);
+        fail(`${args.model} does not support native transparent backgrounds. Use a GPT Image 2.5 or 2.6 model such as ${DEFAULT_MODEL} (native alpha), or --transparent-mode chroma-key for local PNG cleanup.`);
       }
       args.transparentMode = "native-alpha";
     } else if (args.transparentMode === "native-alpha" && !profile.nativeAlpha) {
-      fail(`${args.model} does not support native transparent backgrounds. Use a GPT Image 2.5 model such as ${DEFAULT_MODEL} (native alpha), or --transparent-mode chroma-key for local PNG cleanup.`);
+      fail(`${args.model} does not support native transparent backgrounds. Use a GPT Image 2.5 or 2.6 model such as ${DEFAULT_MODEL} (native alpha), or --transparent-mode chroma-key for local PNG cleanup.`);
     }
     if (args.transparentMode === "chroma-key") {
       if (ext !== ".png") {
-        fail("--transparent-mode chroma-key currently requires PNG output. Use .png, or native alpha with a GPT Image 2.5 model.");
+        fail("--transparent-mode chroma-key currently requires PNG output. Use .png, or native alpha with a GPT Image 2.5 or 2.6 model.");
       }
     }
   } else if (args.transparentMode !== "auto" && args.transparentMode !== "reject") {
@@ -973,7 +983,7 @@ function chromaKeyPng(buffer, { chromaKey, tolerance }) {
   };
 }
 
-// GPT Image 2.5 native alpha tops out around 252 on solid subjects and leaves
+// GPT Image 2.5/2.6 native alpha tops out around 252 on solid subjects and leaves
 // alpha 1-2 specks in the background. Snap both, then bleed edge colors into
 // clear pixels so resizing doesn't pull in the hidden backdrop.
 const ALPHA_SNAP_OPAQUE = 240;
@@ -1126,6 +1136,9 @@ function appendSharedFormFields(form, args, outputFormat) {
   if (args.outputCompression !== null) {
     form.append("output_compression", String(args.outputCompression));
   }
+  if (args.complexity !== null) {
+    form.append("complexity", args.complexity);
+  }
 }
 
 function buildEditForm(args, outputFormat) {
@@ -1182,6 +1195,9 @@ function buildGenerationBody(args, outputFormat) {
   }
   if (args.outputCompression !== null) {
     requestBody.output_compression = args.outputCompression;
+  }
+  if (args.complexity !== null) {
+    requestBody.complexity = args.complexity;
   }
   return requestBody;
 }
@@ -1245,7 +1261,6 @@ function buildDryRun(args, outputFormat, outputPath, clientRequestId) {
     model: args.model,
     background: args.background,
     transparentMode: args.transparentMode,
-    ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
     ...(args.transparentMode === "chroma-key" ? { chromaKey: args.chromaKey } : {}),
     timeoutSeconds: args.timeoutSeconds,
     ...(buildPostprocessSummary(args, outputFormat) ? { postprocess: buildPostprocessSummary(args, outputFormat) } : {}),
@@ -1385,7 +1400,6 @@ async function main() {
     background: args.background,
     model: args.model,
     transparentMode: args.transparentMode,
-    ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
     ...(postprocessResult ? {
       postprocess: {
         type: postprocessResult.type,
@@ -1431,8 +1445,7 @@ async function main() {
         model: args.model,
         transparentMode: args.transparentMode,
         ...(args.transparentMode === "native-alpha" ? { alphaCleanup: args.alphaCleanup } : {}),
-        ...(args.fallbackModel ? { fallbackModel: args.fallbackModel } : {}),
-        timeoutSeconds: args.timeoutSeconds,
+            timeoutSeconds: args.timeoutSeconds,
         clientRequestId,
         openaiRequestId,
         ...(args.outputCompression !== null ? { outputCompression: args.outputCompression } : {}),

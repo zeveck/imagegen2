@@ -1,6 +1,6 @@
 ---
 name: imagegen2
-description: Generate or edit game-oriented raster assets using OpenAI GPT Image 2.5 (gpt-image-2.5-flare by default) through a bundled zero-dependency CLI. Ideal for sprites, tiles, UI elements, icons, portraits, backgrounds, concept art, and reference-image edits. Supports iteration and project asset organization.
+description: Generate or edit game-oriented raster assets using OpenAI GPT Image 2.6 (gpt-image-2.6-flare by default) through a bundled zero-dependency CLI. Ideal for sprites, tiles, UI elements, icons, portraits, backgrounds, concept art, and reference-image edits. Supports iteration and project asset organization.
 disable-model-invocation: false
 allowed-tools: "Bash(node ${CLAUDE_SKILL_DIR}/generate.cjs *), Bash(node */imagegen2/generate.cjs *), Bash(node cli/generate.cjs *)"
 argument-hint: <description> [--image path] [size: auto|WxH] [quality: low|medium|high|xhigh|max] [transparent] [format: png|webp|jpg]
@@ -9,7 +9,7 @@ argument-hint: <description> [--image path] [size: auto|WxH] [quality: low|mediu
 # ImageGen2 for Claude Code
 
 Use this skill when the user asks to generate, edit, or iterate on project-local
-bitmap assets with OpenAI GPT Image 2.5.
+bitmap assets with OpenAI GPT Image 2.6.
 
 The CLI is bundled next to this `SKILL.md`, at `${CLAUDE_SKILL_DIR}/generate.cjs`.
 That path works whether the skill was installed as a plugin or copied into a
@@ -32,12 +32,16 @@ node ${CLAUDE_SKILL_DIR}/generate.cjs --prompt "..." --output "..." [options]
 
 ## Important Differences from the old imagegen skill
 
-- Default model is `gpt-image-2.5-flare` (fast). A project can set
+- Default model is `gpt-image-2.6-flare` (fast). A project can set
   `IMAGEGEN2_MODEL` in `.env` to pin a model or snapshot; respect it and
   don't pass `--model` unless asked. Use
-  `--model gpt-image-2.5-sunburst` for slower, more detailed final art, and
-  `--model gpt-image-2` only to match assets made before the 2.5 upgrade.
-- Quality levels `xhigh` and `max` are available on GPT Image 2.5 models.
+  `--model gpt-image-2.6-sunburst` for slower, more detailed final art,
+  `--model gpt-image-2.5-flare` when cost matters more than quality (about 4x
+  cheaper per image), and `--model gpt-image-2` only to match assets made
+  before the 2.5 upgrade.
+- Quality levels `xhigh` and `max` are available on GPT Image 2.5 and 2.6
+  models. `--complexity low|medium|high` (2.6 only, API default high): try
+  `low` when an edit drifts from its reference.
 - History is `.imagegen2-history.jsonl`. Output JSON includes token `usage`.
 - `--input-fidelity` is not supported; GPT Image 2.x models use high-fidelity
   image inputs automatically.
@@ -50,7 +54,6 @@ node ${CLAUDE_SKILL_DIR}/generate.cjs --prompt "..." --output "..." [options]
     background from `--model` and removes it locally (hard binary alpha). Use
     it when a pipeline depends on it or with `gpt-image-2`, which has no
     native alpha.
-  - `fallback-model` (native alpha via `gpt-image-1.5`) is legacy.
   Disclose which path was used.
 
 ## Examples
